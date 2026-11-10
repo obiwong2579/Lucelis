@@ -1,6 +1,6 @@
 {
   "name": "lucelis",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Lucelis for Claude Code: a lightweight usage bar and local activity dashboard for Windows. Shows 5-hour and 7-day quota left, prompt-cache state, context usage, current-session activity, next-message cost estimates and project/model history. Local-only, no telemetry, no model calls, no external server.",
   "author": {
     "name": "obiwong2579"

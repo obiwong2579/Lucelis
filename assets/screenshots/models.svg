@@ -1,0 +1,107 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="809" height="828" viewBox="0 0 809 828" font-family="'Cascadia Mono','Cascadia Code',Consolas,Menlo,'DejaVu Sans Mono',monospace" font-size="14">
+<rect width="100%" height="100%" rx="10" fill="#16181c"/>
+<text x="18" y="33" fill="#8695a3" font-size="12">Lucelis</text>
+<line x1="18" x2="790.8000000000001" y1="46" y2="46" stroke="#3a4048"/>
+<rect x="26.4" y="64.0" width="84.0" height="18.0" rx="3" fill="none" stroke="#3a4048"/>
+<rect x="118.8" y="64.0" width="75.6" height="18.0" rx="3" fill="none" stroke="#3a4048"/>
+<rect x="202.8" y="64.0" width="84.0" height="18.0" rx="3" fill="none" stroke="#3a4048"/>
+<rect x="295.2" y="64.0" width="67.2" height="18.0" rx="3" fill="#D9B46A"/>
+<rect x="370.8" y="64.0" width="84.0" height="18.0" rx="3" fill="none" stroke="#3a4048"/>
+<rect x="463.2" y="64.0" width="84.0" height="18.0" rx="3" fill="none" stroke="#3a4048"/>
+<rect x="85.2" y="86.0" width="58.8" height="18.0" rx="3" fill="none" stroke="#3a4048"/>
+<rect x="152.4" y="86.0" width="33.6" height="18.0" rx="3" fill="none" stroke="#3a4048"/>
+<rect x="194.4" y="86.0" width="42.0" height="18.0" rx="3" fill="#D9B46A"/>
+<rect x="244.8" y="86.0" width="42.0" height="18.0" rx="3" fill="none" stroke="#3a4048"/>
+<rect x="295.2" y="86.0" width="33.6" height="18.0" rx="3" fill="none" stroke="#3a4048"/>
+<rect x="337.2" y="86.0" width="42.0" height="18.0" rx="3" fill="none" stroke="#3a4048"/>
+<rect x="118.8" y="482.0" width="67.2" height="18.0" rx="3" fill="#D9B46A"/>
+<rect x="194.4" y="482.0" width="84.0" height="18.0" rx="3" fill="none" stroke="#3a4048"/>
+<rect x="286.8" y="482.0" width="84.0" height="18.0" rx="3" fill="none" stroke="#3a4048"/>
+<text x="34.8" y="77.5" fill="#e8e6e1" textLength="67.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Overview</text>
+<text x="127.2" y="77.5" fill="#e8e6e1" textLength="58.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Session</text>
+<text x="211.2" y="77.5" fill="#e8e6e1" textLength="67.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Projects</text>
+<text x="303.6" y="77.5" fill="#0b1016" textLength="50.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve" font-weight="600">Models</text>
+<text x="379.2" y="77.5" fill="#e8e6e1" textLength="67.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Patterns</text>
+<text x="471.6" y="77.5" fill="#e8e6e1" textLength="67.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Settings</text>
+<text x="555.6" y="77.5" fill="#8695a3" textLength="75.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">? Terms ▾</text>
+<text x="26.4" y="99.5" fill="#8695a3" textLength="50.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Period</text>
+<text x="93.6" y="99.5" fill="#e8e6e1" textLength="42.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Today</text>
+<text x="160.8" y="99.5" fill="#e8e6e1" textLength="16.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">7d</text>
+<text x="202.8" y="99.5" fill="#0b1016" textLength="25.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve" font-weight="600">30d</text>
+<text x="253.2" y="99.5" fill="#e8e6e1" textLength="25.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">90d</text>
+<text x="303.6" y="99.5" fill="#e8e6e1" textLength="16.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">1y</text>
+<text x="345.6" y="99.5" fill="#e8e6e1" textLength="25.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">All</text>
+<text x="26.4" y="143.5" fill="#e8e6e1" textLength="100.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve" font-weight="600">NEXT MESSAGE</text>
+<text x="26.4" y="165.5" fill="#8695a3" textLength="378.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">API-price equivalent estimate, not your bill.</text>
+<text x="26.4" y="187.5" fill="#243039" textLength="571.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">────────────────────────────────────────────────────────────────────</text>
+<text x="26.4" y="209.5" fill="#8695a3" textLength="42.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve" font-weight="600">Model</text>
+<text x="135.6" y="209.5" fill="#8695a3" textLength="25.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve" font-weight="600">Now</text>
+<text x="211.2" y="209.5" fill="#8695a3" textLength="58.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve" font-weight="600">If cold</text>
+<text x="286.8" y="209.5" fill="#8695a3" textLength="42.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve" font-weight="600">Saves</text>
+<text x="26.4" y="231.5" fill="#8695a3" textLength="92.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">○ Fable 5.2</text>
+<text x="135.6" y="231.5" fill="#8695a3" textLength="42.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">$3.39</text>
+<text x="211.2" y="231.5" fill="#8695a3" textLength="42.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">$3.39</text>
+<text x="286.8" y="231.5" fill="#3b4854" textLength="8.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">–</text>
+<text x="26.4" y="253.5" fill="#8695a3" textLength="92.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">○ Fable 5.1</text>
+<text x="135.6" y="253.5" fill="#8695a3" textLength="42.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">$4.24</text>
+<text x="211.2" y="253.5" fill="#8695a3" textLength="42.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">$4.24</text>
+<text x="286.8" y="253.5" fill="#3b4854" textLength="8.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">–</text>
+<text x="26.4" y="275.5" fill="#e8e6e1" textLength="84.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve" font-weight="600">● Opus 5.5</text>
+<text x="135.6" y="275.5" fill="#e8e6e1" textLength="42.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve" font-weight="600">$0.04</text>
+<text x="211.2" y="275.5" fill="#8695a3" textLength="42.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">$1.70</text>
+<text x="286.8" y="275.5" fill="#7fc98f" textLength="42.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">$1.65</text>
+<text x="26.4" y="297.5" fill="#8695a3" textLength="100.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">○ Sonnet 5.5</text>
+<text x="135.6" y="297.5" fill="#8695a3" textLength="42.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">$0.85</text>
+<text x="211.2" y="297.5" fill="#8695a3" textLength="42.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">$0.85</text>
+<text x="286.8" y="297.5" fill="#3b4854" textLength="8.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">–</text>
+<text x="26.4" y="319.5" fill="#8695a3" textLength="92.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">○ Haiku 5.5</text>
+<text x="135.6" y="319.5" fill="#8695a3" textLength="42.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">$0.21</text>
+<text x="211.2" y="319.5" fill="#8695a3" textLength="42.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">$0.21</text>
+<text x="286.8" y="319.5" fill="#3b4854" textLength="8.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">–</text>
+<text x="26.4" y="341.5" fill="#8695a3" textLength="756.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">● warm  ○ cold (each model has its own cache: another model starts cold) · yours: Opus 5.5</text>
+<text x="26.4" y="363.5" fill="#8695a3" textLength="50.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">(bold)</text>
+<text x="26.4" y="385.5" fill="#8695a3" textLength="747.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Assumes all 212K of context is a cache hit (no request on record yet), so warm is a lower</text>
+<text x="26.4" y="407.5" fill="#8695a3" textLength="613.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">bound. Excludes your new message and all output. Prices as of 2026-11-10.</text>
+<text x="26.4" y="451.5" fill="#e8e6e1" textLength="100.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve" font-weight="600">MODELS · 30d</text>
+<text x="26.4" y="473.5" fill="#243039" textLength="571.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">────────────────────────────────────────────────────────────────────</text>
+<text x="26.4" y="495.5" fill="#8695a3" textLength="84.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Compare by</text>
+<text x="127.2" y="495.5" fill="#0b1016" textLength="50.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve" font-weight="600">tokens</text>
+<text x="202.8" y="495.5" fill="#e8e6e1" textLength="67.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">sessions</text>
+<text x="295.2" y="495.5" fill="#e8e6e1" textLength="67.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">messages</text>
+<text x="26.4" y="517.5" fill="#e8e6e1" textLength="84.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Sonnet 5.5</text>
+<text x="127.2" y="517.5" fill="#e8e6e1" textLength="33.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve" font-weight="600">506K</text>
+<text x="202.8" y="517.5" fill="#8695a3" textLength="25.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">38%</text>
+<text x="253.2" y="517.5" fill="#D9B46A" textLength="67.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">●●●●●●●●</text>
+<text x="320.4" y="517.5" fill="#3b4854" textLength="100.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">············</text>
+<text x="26.4" y="539.5" fill="#e8e6e1" textLength="67.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Opus 5.5</text>
+<text x="127.2" y="539.5" fill="#e8e6e1" textLength="33.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve" font-weight="600">462K</text>
+<text x="202.8" y="539.5" fill="#8695a3" textLength="25.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">35%</text>
+<text x="253.2" y="539.5" fill="#D9B46A" textLength="58.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">●●●●●●●</text>
+<text x="312.0" y="539.5" fill="#3b4854" textLength="109.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">·············</text>
+<text x="26.4" y="561.5" fill="#e8e6e1" textLength="75.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Haiku 5.5</text>
+<text x="127.2" y="561.5" fill="#e8e6e1" textLength="33.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve" font-weight="600">353K</text>
+<text x="202.8" y="561.5" fill="#8695a3" textLength="25.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">27%</text>
+<text x="253.2" y="561.5" fill="#D9B46A" textLength="42.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">●●●●●</text>
+<text x="295.2" y="561.5" fill="#3b4854" textLength="126.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">···············</text>
+<text x="26.4" y="605.5" fill="#e8e6e1" textLength="151.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve" font-weight="600">CACHE USE BY MODEL</text>
+<text x="26.4" y="627.5" fill="#243039" textLength="571.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">────────────────────────────────────────────────────────────────────</text>
+<text x="26.4" y="649.5" fill="#8695a3" textLength="42.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve" font-weight="600">Model</text>
+<text x="127.2" y="649.5" fill="#8695a3" textLength="50.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve" font-weight="600">Writes</text>
+<text x="202.8" y="649.5" fill="#8695a3" textLength="42.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve" font-weight="600">Reads</text>
+<text x="278.4" y="649.5" fill="#8695a3" textLength="33.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve" font-weight="600">From</text>
+<text x="278.4" y="671.5" fill="#8695a3" textLength="42.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve" font-weight="600">cache</text>
+<text x="26.4" y="693.5" fill="#e8e6e1" textLength="84.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Sonnet 5.5</text>
+<text x="127.2" y="693.5" fill="#e8e6e1" textLength="33.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">288K</text>
+<text x="202.8" y="693.5" fill="#8695a3" textLength="42.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">2.01M</text>
+<text x="278.4" y="693.5" fill="#e8e6e1" textLength="25.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">87%</text>
+<text x="26.4" y="715.5" fill="#e8e6e1" textLength="67.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Opus 5.5</text>
+<text x="127.2" y="715.5" fill="#e8e6e1" textLength="33.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">269K</text>
+<text x="202.8" y="715.5" fill="#8695a3" textLength="42.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">1.87M</text>
+<text x="278.4" y="715.5" fill="#e8e6e1" textLength="25.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">87%</text>
+<text x="26.4" y="737.5" fill="#e8e6e1" textLength="75.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Haiku 5.5</text>
+<text x="127.2" y="737.5" fill="#e8e6e1" textLength="33.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">210K</text>
+<text x="202.8" y="737.5" fill="#8695a3" textLength="42.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">1.38M</text>
+<text x="278.4" y="737.5" fill="#e8e6e1" textLength="25.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">86%</text>
+<text x="26.4" y="759.5" fill="#8695a3" textLength="688.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">From cache = cache reads as a share of all input the model received in the period.</text>
+<text x="26.4" y="803.5" fill="#8695a3" textLength="159.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">History: up to date</text>
+</svg>

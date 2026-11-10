@@ -10,10 +10,9 @@ Lucelis is an independent community plugin and is not affiliated with Anthropic.
 
 **Local-only • No telemetry • No model calls • No external server**
 
-```
-L  5H 59% · 3h40m │ 7D 13% · 4d5h │ WARM 58m │ CTX 44% │ ATLAS        More ▾  Details ›
-   Session 1.95M │ Today 923K
-```
+![The Lucelis bar above the prompt](assets/screenshots/bar.svg)
+
+*The pictures on this page are drawn from the plugin's own output using made-up sample data (project "Atlas"). They show the content and layout; the desktop app draws it with its own fonts, buttons and theme.*
 
 ## What it does
 
@@ -41,12 +40,18 @@ Lucelis has three levels. Each one opens the next.
 
 ### 2. More ▾ (a summary of the current session)
 
+![More: a snapshot of the current session](assets/screenshots/more.svg)
+
 Six short lines: SESSION, ACTIVITY, CONTEXT, CACHE, NEXT MESSAGE and IF SWITCHED.
 
 - **NEXT MESSAGE** estimates what your next message would cost now, and what it would cost if the cache had gone cold.
 - **IF SWITCHED** shows the same prompt on the other models, with **Compare models ›** for the full table.
 
 ### 3. Details › (the Activity Dashboard)
+
+![Activity Dashboard, Overview tab](assets/screenshots/overview.svg)
+
+![Activity Dashboard, Models tab: next-message cost for each model](assets/screenshots/models.svg)
 
 A pane beside the chat, built from your own local history:
 
