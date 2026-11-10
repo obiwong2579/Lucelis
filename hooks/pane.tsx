@@ -1,0 +1,666 @@
+// The Lucelis pane (level 3): six tabs, Overview · Session · Projects · Models ·
+// Patterns · Settings. Draws only; numbers come from agg.ts queries over the
+// aggregate (memoised per aggregate build) and from the live View.
+//
+// Layout rules for the Desktop pane: no whitespace padding for alignment (the font
+// is proportional): columns are fixed-width Boxes; metrics flow in a wrapping grid
+// of fixed-width cells, so a narrow pane gets one column and a wide one several;
+// tables switch to two-line rows when narrow. No inner scroll areas.
+
+import type { PaneView, Settings } from '../types'
+import type { Agg, Period, Resolver, Slice, Stats } from './agg'
+import { PERIODS, PERIOD_LABEL, addDays, change, daysBetween, firstDay, localDay, makeResolver, mean, median, patterns, rangeOf, stats, streaks, weekday } from './agg'
+import type { ItemState } from './bar'
+import { ITEMS, barLayout } from './bar'
+import type { View } from './model'
+import type { CostRow } from './prices'
+import { PRICES_AS_OF, PRICES_SOURCE, usd } from './prices'
+import { COLD, DAYS, EMPTY, GOOD, HOURS, INK, LINE, MUTED, ORANGE, WARM, dots, dur, modelName, pct, signed, tok, trend, when } from './fmt'
+
+type El = { Box: any; Text: any; Button: any; Svg?: any; Input?: any }
+type Act = {
+  setView: (fn: (v: PaneView) => PaneView) => void
+  setSettings: (fn: (s: Settings) => Settings) => void
+  refresh: () => void
+  rebuild: () => void
+}
+
+/** Shown by the "? Terms" toggle: what the figures mean and how sure they are. */
+export const HELP = [
+  'Activity tokens = uncached input + cache writes + output. The headline figure for shares, trends and the heatmap. Cache reads are not in it.',
+  'On the bar: "5H 14%" and "7D 7%" are the quota LEFT, "CTX 24%" is the context USED; all three are green with 70% or more left, yellow from 30%, red below; figures in K / M are tokens; "◷" is time since the session started; "7d" is all projects over the last 7 days.',
+  'Session activity ("Session" on the bar) = the activity tokens of the current session so far.',
+  'Project today ("Today" on the bar) = the activity tokens of the current project since local midnight. It is not your account-wide usage.',
+  'Output tokens = tokens Claude generated. "468K output" on a session is the total for the whole session so far, not the size of the last reply.',
+  'Cache reads = previously cached context processed again on each request. Kept separate: it repeats the same context every turn and would swamp the rest.',
+  'Processed tokens = activity tokens + cache reads (all tokens the model handled).',
+  'None of these token totals is your subscription usage. The 5H and 7D quotas (and their reset times) come from Claude itself; CTX is how full this conversation is, a different thing.',
+  "Messages = your prompts + the main thread's responses (subagent responses add tokens, not messages).",
+  "Elapsed = now minus the session's first event. Active (est.) = gaps under 30 minutes between events, summed.",
+  "WARM / COLD is inferred from request timing (60 minutes after a model's last request), not reported by Claude. Each model has its own cache.",
+  `Next-message costs are API-price equivalent estimates (input side only, excluding your new message and output), not your bill. Prices as of ${PRICES_AS_OF}: ${PRICES_SOURCE}.`,
+  'Project = an alias you set, else the git repository root, else the first folder under the directory Claude sessions start in.',
+  'Responses with any count over 5M tokens are treated as damaged data and left out (a corruption guard, not a model limit).',
+]
+
+export const TABS: PaneView['tab'][] = ['overview', 'session', 'projects', 'models', 'patterns', 'settings']
+export const TAB_LABEL: Record<PaneView['tab'], string> = {
+  overview: 'Overview', session: 'Session', projects: 'Projects', models: 'Models', patterns: 'Patterns', settings: 'Settings',
+}
+/** Metric cell width in columns: two fit a ~60-column pane, one a narrow one. */
+const CELL = 28
+
+const metricOf = (s: Slice, by: 'tokens' | 'sessions' | 'messages') => (by === 'tokens' ? s.tokens : by === 'sessions' ? s.sessions.size : s.messages)
+const fmtMetric = (n: number, by: 'tokens' | 'sessions' | 'messages') => (by === 'tokens' ? tok(n) : String(n))
+
+// Queries are pure over (aggregate build, aliases, range, project): memoised so a
+// redraw (a tab press, the minute tick) does not recompute them.
+const memo = new Map<string, Stats>()
+let memoBuild = -1
+const cachedStats = (a: Agg, resolve: Resolver, sig: string, from: string, to: string, project?: string | null): Stats => {
+  if (a.built !== memoBuild || memo.size > 64) { memo.clear(); memoBuild = a.built }
+  const k = `${sig}|${from}|${to}|${project ?? ''}`
+  let s = memo.get(k)
+  if (!s) { s = stats(a, resolve, from, to, project); memo.set(k, s) }
+  return s
+}
+
+/** A GitHub-style calendar of the period (at least 13 weeks), one square per day, as SVG. */
+export const heatSvg = (byDay: Map<string, Slice>, from: string, to: string, by: 'tokens' | 'sessions' | 'messages', width: number) => {
+  const span = Math.max(91, Math.min(371, daysBetween(from, to) + 1))
+  const start = addDays(to, -(span - 1) - weekday(addDays(to, -(span - 1))))
+  const weeks = Math.ceil((daysBetween(start, to) + 1) / 7)
+  const cell = Math.max(7, Math.min(12, Math.floor((width - 30) / weeks) - 2))
+  const step = cell + 2
+  const vals: number[] = []
+  for (let d = start; d <= to; d = addDays(d, 1)) { const s = byDay.get(d); vals.push(s ? metricOf(s, by) : 0) }
+  const nz = vals.filter(v => v > 0).sort((a, b) => a - b)
+  const q = (p: number) => nz[Math.min(nz.length - 1, Math.floor(p * nz.length))] ?? 0
+  const cuts = [q(0.25), q(0.5), q(0.75)]
+  const level = (v: number) => (v <= 0 ? 0 : v <= cuts[0] ? 1 : v <= cuts[1] ? 2 : v <= cuts[2] ? 3 : 4)
+  const fill = ['', '0.28', '0.5', '0.75', '1']
+  let g = ''
+  let i = 0
+  for (let d = start; d <= to; d = addDays(d, 1), i++) {
+    const w = Math.floor(i / 7)
+    const r = weekday(d)
+    const lv = level(vals[i])
+    const color = lv ? ORANGE : CHART_EMPTY
+    const op = lv ? ` fill-opacity="${fill[lv]}"` : ''
+    g += `<rect x="${24 + w * step}" y="${r * step}" width="${cell}" height="${cell}" rx="2" fill="${color}"${op}><title>${d}: ${fmtMetric(vals[i], by)}</title></rect>`
+  }
+  for (const [r, n] of [[1, 'Mon'], [3, 'Wed'], [5, 'Fri']] as const)
+    g += `<text x="0" y="${r * step + cell - 1}" font-size="9" fill="${MUTED}" font-family="sans-serif">${n}</text>`
+  const W = 24 + weeks * step
+  const H = 7 * step
+  return {
+    source: `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><rect width="${W}" height="${H}" fill="none"/>${g}</svg>`,
+    w: W, h: H,
+    alt: `Daily ${by} from ${start} to ${to}: ${nz.length} active days, busiest ${fmtMetric(nz[nz.length - 1] ?? 0, by)}.`,
+  }
+}
+
+/** Daily activity tokens over the last `n` days as bars (Overview), SVG with per-day tooltips. */
+export const barsSvg = (byDay: Map<string, Slice>, to: string, n: number, width: number) => {
+  const days: string[] = []
+  for (let d = addDays(to, -(n - 1)); d <= to; d = addDays(d, 1)) days.push(d)
+  const vals = days.map(d => byDay.get(d)?.tokens ?? 0)
+  const max = Math.max(1, ...vals)
+  const H = 48
+  const CAP = 14
+  const step = Math.max(4, Math.floor((width - 4) / n))
+  const bw = Math.max(2, step - 2)
+  let g = ''
+  days.forEach((d, i) => {
+    const h = vals[i] ? Math.max(2, Math.round((vals[i] / max) * (H - 2))) : 1
+    g += `<rect x="${i * step}" y="${H - h}" width="${bw}" height="${h}" rx="1" fill="${vals[i] ? ORANGE : CHART_EMPTY}"><title>${d}: ${tok(vals[i])} activity tokens</title></rect>`
+  })
+  const W = n * step
+  const cap = (x: number, anchor: string, t: string) => `<text x="${x}" y="${H + CAP - 3}" font-size="10" fill="${MUTED}" font-family="sans-serif" text-anchor="${anchor}">${t}</text>`
+  g += cap(0, 'start', days[0].slice(5)) + cap(W, 'end', 'today') + `<text x="2" y="9" font-size="10" fill="${MUTED}" font-family="sans-serif">max ${tok(max)}</text>`
+  return {
+    source: `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H + CAP}" viewBox="0 0 ${W} ${H + CAP}"><rect width="${W}" height="${H + CAP}" fill="none"/>${g}</svg>`,
+    w: W, h: H + CAP, alt: `Daily activity tokens for the last ${n} days, highest ${tok(max)}.`,
+  }
+}
+
+/** Counts per bucket as labelled bars (hours of the day, weekdays), SVG with tooltips. */
+export const histSvg = (vals: number[], labels: string[], tick: (i: number) => boolean, width: number, unit: string) => {
+  const n = vals.length
+  const max = Math.max(1, ...vals)
+  const H = 44
+  const CAP = 14
+  const step = Math.max(6, Math.floor(width / n))
+  const bw = Math.max(3, step - 2)
+  let g = ''
+  vals.forEach((v, i) => {
+    const h = v ? Math.max(2, Math.round((v / max) * (H - 2))) : 1
+    g += `<rect x="${i * step}" y="${H - h}" width="${bw}" height="${h}" rx="1" fill="${v ? ORANGE : CHART_EMPTY}"><title>${labels[i]}: ${v} ${unit}</title></rect>`
+    if (tick(i)) g += `<text x="${i * step}" y="${H + CAP - 3}" font-size="10" fill="${MUTED}" font-family="sans-serif">${labels[i]}</text>`
+  })
+  const W = n * step
+  return {
+    source: `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H + CAP}" viewBox="0 0 ${W} ${H + CAP}"><rect width="${W}" height="${H + CAP}" fill="none"/>${g}</svg>`,
+    w: W, h: H + CAP, alt: labels.map((l, i) => `${l} ${vals[i]}`).join(', '),
+  }
+}
+
+/**
+ * The pane sits on the app's own background (light or dark), so its main text takes the
+ * app's own text colour: no colour is set for it.
+ */
+const TEXT = undefined as unknown as string
+/** Empty chart cells: a translucent grey that reads on a light and on a dark background. */
+const CHART_EMPTY = 'rgba(134,149,163,0.28)'
+
+export const paneTree = (ui: El, a: Agg | null, v: View, pv: PaneView, st: Settings, note: string, columns: number, now: number, bandColumns: number | null, act: Act) => {
+  const { Box, Text, Button } = ui
+  const Input = ui.Input
+  const Svg = ui.Svg
+  const cols = Math.max(30, columns || 60)
+  const out: any[] = []
+
+  // ---- building blocks
+  /** A selectable control: a native button, the selected one drawn as primary. */
+  const choice = (key: string, label: string, on: boolean, press: () => void) => (
+    <Button key={key} variant={on ? 'primary' : 'secondary'} label={label} onPress={press} />
+  )
+  const row = (key: string, kids: any[]) => <Box key={key} flexDirection="row" flexWrap="wrap" columnGap={1} rowGap={0}>{kids.filter(Boolean)}</Box>
+  // The rule is drawn shorter than the column estimate: on a proportional font a full-width
+  // rule wraps a stub onto a second line.
+  const rule = '─'.repeat(Math.max(8, Math.min(Math.floor((cols - 2) * 0.7), 90)))
+  /** A subtitle as a sentence: capital first letter, full stop. */
+  const sentence = (t: string) => { const x = t.trim(); const y = x ? x[0].toUpperCase() + x.slice(1) : x; return /[.!?:]$/.test(y) ? y : y + '.' }
+  const section = (key: string, title: string, sub?: string) => (
+    <Box key={key} flexDirection="column" marginTop={1}>
+      <Text color={TEXT} bold>{title}</Text>
+      {sub ? <Text color={MUTED}>{sentence(sub)}</Text> : null}
+      <Text color={LINE}>{rule}</Text>
+    </Box>
+  )
+  /** One metric: label over value, in a fixed-width cell of a wrapping grid. */
+  // Narrow pane: one metric per line, label then value (half the height of label-over-value).
+  // Wide pane: label over value in fixed-width cells that flow into columns.
+  const narrowPane = cols < CELL * 2 + 4
+  const metric = (key: string, label: string, value: string, color = TEXT, hint?: string) => narrowPane ? (
+    <Box key={key} flexDirection="row" flexWrap="wrap" width="100%">
+      <Box width={19} flexShrink={0}><Text color={MUTED}>{label}</Text></Box>
+      <Text color={color} bold>{value}</Text>{hint ? <Text color={MUTED}>{' ' + hint}</Text> : null}
+    </Box>
+  ) : (
+    <Box key={key} width={CELL} flexShrink={0} flexDirection="column" marginBottom={0}>
+      <Text color={MUTED}>{label}</Text>
+      <Box flexDirection="row"><Text color={color} bold>{value}</Text>{hint ? <Text color={MUTED}>{' ' + hint}</Text> : null}</Box>
+    </Box>
+  )
+  const grid = (key: string, cells: any[]) => <Box key={key} flexDirection="row" flexWrap="wrap">{cells.filter(Boolean)}</Box>
+  const note1 = (key: string, text: string, color = MUTED) => <Text key={key} color={color}>{text}</Text>
+  const cell = (k: string, t: string, w: number, c = TEXT, b = false) => <Box key={k} width={w} flexShrink={0}><Text color={c} bold={b}>{t}</Text></Box>
+
+  // ---- tabs (and the help toggle)
+  const tabs = TABS.map(t => choice(`tab-${t}`, TAB_LABEL[t], pv.tab === t, () => act.setView(x => ({ ...x, tab: t, project: null }))))
+  tabs.push(<Button key="help" plain dimColor={!pv.help} label={pv.help ? '? Terms ▴' : '? Terms ▾'} onPress={() => act.setView(x => ({ ...x, help: !x.help }))} />)
+  out.push(row('tabs', tabs))
+  if (pv.help) out.push(<Box key="help-box" flexDirection="column" marginTop={1}>{HELP.map((line, i) => <Text key={`help-${i}`} color={MUTED}>· {line}</Text>)}</Box>)
+
+  if (!a || !a.today) {
+    if (pv.tab === 'settings') out.push(note1('empty', 'No history read yet.'))
+    out.push(<Text key="empty" color={MUTED}>No history yet. {note || 'Reading transcripts…'}</Text>)
+    return <Box flexDirection="column" paddingX={1}>{out}</Box>
+  }
+
+  const period: Period = pv.period ?? st.period
+  const today = localDay(now, a.tz)
+  const rg = rangeOf(period, today, firstDay(a))
+  const usesPeriod = pv.tab === 'overview' || pv.tab === 'projects' || pv.tab === 'models' || pv.tab === 'patterns'
+  if (usesPeriod) {
+    out.push(row('periods', [
+      <Text key="pl" color={MUTED}>Period</Text>,
+      ...PERIODS.map(p => choice(`p-${p}`, PERIOD_LABEL[p], p === period, () => act.setView(x => ({ ...x, period: p })))),
+    ]))
+  }
+  const aliases = st.aliases ?? []
+  const sig = aliases.map(x => `${x.path}=${x.name}`).join(';')
+  const resolve = makeResolver(a, aliases)
+  const q = (from: string, to: string, project?: string | null) => cachedStats(a, resolve, sig, from, to, project)
+  const cur = q(rg.from, rg.to)
+  const prev = rg.prev ? q(rg.prev.from, rg.prev.to) : null
+  const nameOf = (key: string) => cur.names.get(key) ?? prev?.names.get(key) ?? resolve(key).name ?? key
+  const sessionsOf = (s: Stats) => [...s.bySession.entries()]
+  const nDays = daysBetween(rg.from, rg.to) + 1
+  const tr = (n: number, p: number | undefined) => (p === undefined ? undefined : trend(change(n, p)) || undefined)
+  const s = v.session
+
+  // ---------------------------------------------------------------- Overview
+  if (pv.tab === 'overview') {
+    out.push(section('h-ov', `OVERVIEW · ${PERIOD_LABEL[period]}`, rg.prev ? `trend vs the previous ${nDays} days` : undefined))
+    const sk = streaks(a, today)
+    const topModel = [...cur.byModel.entries()].sort((x, y) => y[1].tokens - x[1].tokens)[0]
+    const topProject = [...cur.byProject.entries()].sort((x, y) => y[1].tokens - x[1].tokens)[0]
+    out.push(grid('ov', [
+      metric('ov-t', 'Activity tokens', tok(cur.all.tokens), TEXT, tr(cur.all.tokens, prev?.all.tokens)),
+      metric('ov-s', 'Sessions', String(cur.all.sessions.size), TEXT, tr(cur.all.sessions.size, prev?.all.sessions.size)),
+      metric('ov-m', 'Messages', String(cur.all.messages), TEXT, tr(cur.all.messages, prev?.all.messages)),
+      metric('ov-d', 'Active days', `${cur.all.days.size} of ${nDays}`),
+      metric('ov-k', 'Streak', `${sk.current}d`, TEXT, `longest ${sk.longest}d`),
+      metric('ov-r', 'Cache reads', tok(cur.all.cr), MUTED, `processed ${tok(cur.all.processed)}`),
+      topProject ? metric('ov-p', 'Top project', nameOf(topProject[0]), TEXT, cur.all.tokens ? pct((topProject[1].tokens / cur.all.tokens) * 100) : undefined) : null,
+      topModel ? metric('ov-md', 'Top model', modelName(topModel[0]), TEXT, cur.all.tokens ? pct((topModel[1].tokens / cur.all.tokens) * 100) : undefined) : null,
+    ]))
+    out.push(section('h-da', 'DAILY ACTIVITY', 'activity tokens, last 30 days'))
+    const last30 = q(addDays(today, -29), today)
+    if (Svg) {
+      const b = barsSvg(last30.byDay, today, 30, Math.min(cols * 7, 520))
+      out.push(<Box key="bars"><Svg source={b.source} alt={b.alt} width={b.w} height={b.h} isInteractive /></Box>)
+    } else {
+      const days: number[] = []
+      for (let d = addDays(today, -29); d <= today; d = addDays(d, 1)) days.push(last30.byDay.get(d)?.tokens ?? 0)
+      const mx = Math.max(1, ...days)
+      out.push(<Text key="bars-t" color={ORANGE}>{days.map(x => ' ▁▂▃▄▅▆▇█'[Math.ceil((x / mx) * 8)]).join('')}</Text>)
+    }
+    if (s) {
+      out.push(section('h-now', 'NOW'))
+      out.push(row('now', [
+        <Text key="t" color={MUTED}>{`${s.project?.name ?? 'This session'} · ${s.tokens !== null ? tok(s.tokens) + ' activity tokens' : ''}${v.ctx ? ` · context ${v.ctx.percent}%` : ''}`}</Text>,
+        <Button key="go-session" plain label="Session ›" onPress={() => act.setView(x => ({ ...x, tab: 'session' }))} />,
+      ]))
+    }
+  }
+
+  // ---------------------------------------------------------------- Session
+  if (pv.tab === 'session') {
+    if (!s) out.push(note1('ns', 'No figures for this session yet: they appear after the first reply.'))
+    else {
+      out.push(section('h-id', 'THIS SESSION', s.project ? `project from ${s.project.source}` : undefined))
+      out.push(grid('id', [
+        s.project ? metric('id-p', 'Project', s.project.name) : null,
+        s.model ? metric('id-m', 'Model', modelName(s.model)) : null,
+        s.startedAt ? metric('id-s', 'Started', when(s.startedAt, a.tz, now)) : null,
+        s.elapsedMs ? metric('id-e', 'Elapsed', dur(s.elapsedMs)) : null,
+        s.activeMs ? metric('id-a', 'Active (est.)', dur(s.activeMs)) : null,
+        s.messages !== null ? metric('id-n', 'Messages', String(s.messages), TEXT, s.prompts !== null ? `${s.prompts} prompts` : undefined) : null,
+      ]))
+      out.push(section('h-tk', 'TOKENS'))
+      out.push(grid('tk', [
+        s.tokens !== null ? metric('tk-a', 'Activity tokens', tok(s.tokens)) : null,
+        s.input !== null ? metric('tk-i', 'Input (uncached)', tok(s.input)) : null,
+        s.cacheWrite !== null ? metric('tk-w', 'Cache writes', tok(s.cacheWrite)) : null,
+        s.output !== null ? metric('tk-o', 'Output tokens', tok(s.output)) : null,
+        s.cacheRead !== null ? metric('tk-r', 'Cache reads', tok(s.cacheRead), MUTED, 'kept separate') : null,
+      ]))
+    }
+    if (v.ctx) {
+      const g = v.growth
+      const d = dots(v.ctx.percent, 20)
+      const col = v.ctx.isNearLimit ? WARM : TEXT
+      out.push(section('h-ch', 'CONTEXT HEALTH'))
+      out.push(<Box key="ch-m" flexDirection="row"><Text color={col}>{d.on}</Text><Text color={EMPTY}>{d.off}</Text><Text color={col} bold>{` ${v.ctx.percent}% used`}</Text></Box>)
+      out.push(grid('ch', [
+        metric('ch-u', 'Used', `${tok(v.ctx.tokens)} of ${tok(v.ctx.window)}`),
+        metric('ch-l', 'Left', tok(v.ctx.left)),
+        s?.compactions !== null && s?.compactions !== undefined ? metric('ch-c', 'Compactions', String(s.compactions), TEXT, s.lastCompactionAgo !== null ? `last ${dur(s.lastCompactionAgo)} ago` : undefined) : null,
+        g && g.l5.turns >= 2 ? metric('ch-5', 'Last 5 turns', signed(g.l5.sum)) : null,
+        g && g.l10.turns > (g?.l5.turns ?? 0) ? metric('ch-10', 'Last 10 turns', signed(g.l10.sum)) : null,
+        g && g.l10.turns >= 2 ? metric('ch-g', 'Avg growth', `${signed(g.avg)}/turn`, TEXT, [g.pace, g.direction].filter(Boolean).join(', ')) : null,
+      ]))
+      if (g?.l10.broken) out.push(note1('ch-b', 'A compaction inside the last 10 turns is left out of growth.'))
+      if (v.ctx.isNearLimit) out.push(note1('ch-w', "Within 10% of the model's context window: auto-compaction may run soon.", WARM))
+    }
+    const c = v.cache
+    if (c) {
+      const hue = c.mode === 'warm' ? WARM : COLD
+      out.push(section('h-ca', 'CACHE', 'inferred from request timing'))
+      out.push(<Box key="ca-chip" flexDirection="row"><Text backgroundColor={hue} color={INK} bold>{` ${c.mode === 'warm' ? 'WARM' : 'COLD'} `}</Text><Text color={hue}>{c.mode === 'warm' ? `  cold in ~${c.minsLeft}m` : `  idle ${dur(c.idleMs)}`}</Text></Box>)
+      out.push(grid('ca', [
+        metric('ca-k', c.cached !== null ? 'Cached' : 'Context', tok(c.cached ?? c.resend)),
+        c.reusable !== null ? metric('ca-r', 'Reusable next time', pct(c.reusable)) : null,
+        c.lastTurnHit !== null ? metric('ca-l', 'Last turn cached', pct(c.lastTurnHit)) : null,
+        c.sessionHit !== null ? metric('ca-s', 'Session cached', pct(c.sessionHit)) : null,
+      ]))
+      out.push(note1('ca-n', "The cache is taken as warm for 60 minutes after a model's last request (each model has its own). Claude does not report it."))
+    }
+    if (v.costs && v.cache) out.push(...costTable(ui, v, cols, 'ses'))
+    const t = v.today
+    const w = v.week
+    const r = v.relative
+    if (t?.project || w?.project || r) {
+      out.push(section('h-pr', `THIS PROJECT${t?.project ? ' · ' + t.project.name : ''}`))
+      out.push(grid('pt', [
+        t?.project ? metric('pt-t', 'Project today', tok(t.project.tokens), TEXT, t.project.share !== null ? `${pct(t.project.share)} of today` : undefined) : null,
+        t?.project ? metric('pt-s', 'Today sess / msgs', `${t.project.sessions} / ${t.project.messages}`) : null,
+        w?.project ? metric('pt-w', 'Last 7 days', tok(w.project.tokens), TEXT, w.project.change !== null ? trend(w.project.change) : undefined) : null,
+        w?.share30 !== null && w?.share30 !== undefined ? metric('pt-3', '30-day share', pct(w.share30)) : null,
+        r ? metric('pt-r', 'vs usual session', `${tok(r.tokens[0])} vs ${tok(r.tokens[1])}`, TEXT, r.tokens[1] > 0 ? `${(r.tokens[0] / r.tokens[1]).toFixed(1)}×` : undefined) : null,
+        r && r.active[1] > 0 ? metric('pt-a', 'Active vs usual', `${dur(r.active[0])} vs ${dur(r.active[1])}`) : null,
+        r ? metric('pt-m', 'Msgs vs usual', `${r.messages[0]} vs ${Math.round(r.messages[1])}`) : null,
+      ]))
+      if (r) out.push(note1('pt-n', `"Usual" is the median of this project's ${r.n} earlier sessions.`))
+      if (v.modelMix?.rows.length) out.push(note1('pt-mx', `30 days by model: ${v.modelMix.rows.map(x => `${modelName(x.model)} ${Math.round(x.share)}%`).join(' · ')}`))
+    }
+  }
+
+  // ---------------------------------------------------------------- Projects
+  if (pv.tab === 'projects') {
+    if (pv.project) {
+      const p = pv.project
+      const ps = q(rg.from, rg.to, p)
+      const pp = rg.prev ? q(rg.prev.from, rg.prev.to, p) : null
+      out.push(<Box key="back-row" marginTop={1}><Button key="back" label="‹ All projects" variant="secondary" onPress={() => act.setView(x => ({ ...x, project: null }))} /></Box>)
+      out.push(section('h-pd', `${nameOf(p)} · ${PERIOD_LABEL[period]}`, `${resolve(p).source} · ${p}`))
+      const ss = sessionsOf(ps).map(([sid, x]) => ({ sid, x, s: a.sess[sid] }))
+      const toks = ss.map(r => r.x.tokens)
+      const msgs = ss.map(r => r.x.messages)
+      const longest = ss.filter(r => r.s).sort((x, y) => y.s.act - x.s.act)[0]
+      const topM = [...ps.byModel.entries()].sort((x, y) => y[1].tokens - x[1].tokens)[0]
+      const busiest = [...ps.byDay.entries()].sort((x, y) => y[1].tokens - x[1].tokens)[0]
+      out.push(grid('pd', [
+        metric('pd-t', 'Activity tokens', tok(ps.all.tokens), TEXT, pp ? tr(ps.all.tokens, pp.all.tokens) : undefined),
+        metric('pd-r', 'Cache reads', tok(ps.all.cr), MUTED),
+        metric('pd-s', 'Sessions', String(ps.all.sessions.size)),
+        metric('pd-m', 'Messages', String(ps.all.messages)),
+        metric('pd-a', 'Tokens / session', `${tok(mean(toks))} avg`, TEXT, `${tok(median(toks))} median`),
+        metric('pd-b', 'Msgs / session', `${Math.round(mean(msgs))} avg`, TEXT, `${Math.round(median(msgs))} median`),
+        longest ? metric('pd-l', 'Longest (active est.)', dur(longest.s.act), TEXT, (longest.s.title || longest.sid.slice(0, 8)).slice(0, 24)) : null,
+        topM ? metric('pd-tm', 'Top model', modelName(topM[0])) : null,
+        busiest ? metric('pd-bd', 'Busiest day', busiest[0], TEXT, DAYS[weekday(busiest[0])]) : null,
+      ]))
+      out.push(section('h-pdr', 'RECENT SESSIONS'))
+      const recent = ss.filter(r => r.s).sort((x, y) => y.s.last - x.s.last).slice(0, 6)
+      for (const r of recent) {
+        out.push(
+          <Box key={`pdr-${r.sid}`} flexDirection="column" marginBottom={0}>
+            <Text color={TEXT}>{r.s.title || r.sid.slice(0, 8)}</Text>
+            <Text color={MUTED}>{`${when(r.s.last, a.tz, now)} · ${tok(r.x.tokens)} tokens · ${r.x.messages} msgs · ${dur(r.s.act)} active`}</Text>
+          </Box>,
+        )
+      }
+    } else {
+      out.push(section('h-pr', `PROJECTS · ${PERIOD_LABEL[period]}`, 'ranked by activity tokens'))
+      const rows = [...cur.byProject.entries()].sort((x, y) => y[1].tokens - x[1].tokens)
+      const wide = cols >= 70
+      if (wide) {
+        const W = [22, 10, 7, 9, 9, 7, 9]
+        out.push(<Box key="pr-h" flexDirection="row">{['Project', 'Tokens', 'Share', 'Trend', 'Sessions', 'Msgs', 'Days'].map((t, i) => cell(`ph${i}`, t, W[i], MUTED, true))}</Box>)
+        for (const [p, x] of rows) {
+          const pr = prev?.byProject.get(p)
+          out.push(
+            <Box key={`pr-${p}`} flexDirection="row" alignItems="center">
+              <Box width={W[0]} flexShrink={0}><Button key={`open-${p}`} plain label={nameOf(p).length > 20 ? nameOf(p).slice(0, 19) + '…' : nameOf(p)} onPress={() => act.setView(y => ({ ...y, project: p }))} /></Box>
+              {cell(`${p}1`, tok(x.tokens), W[1], TEXT, true)}
+              {cell(`${p}2`, cur.all.tokens ? pct((x.tokens / cur.all.tokens) * 100) : '–', W[2], MUTED)}
+              {cell(`${p}3`, prev ? (pr ? trend(change(x.tokens, pr.tokens)) : 'new') : '', W[3], MUTED)}
+              {cell(`${p}4`, String(x.sessions.size), W[4])}
+              {cell(`${p}5`, String(x.messages), W[5])}
+              {cell(`${p}6`, String(x.days.size), W[6])}
+            </Box>,
+          )
+        }
+      } else {
+        for (const [p, x] of rows) {
+          const pr = prev?.byProject.get(p)
+          const share = cur.all.tokens ? (x.tokens / cur.all.tokens) * 100 : 0
+          const d = dots(share, 10)
+          out.push(
+            <Box key={`pr-${p}`} flexDirection="column" marginBottom={0}>
+              <Box flexDirection="row" alignItems="center">
+                <Button key={`open-${p}`} plain label={`${nameOf(p)} ›`} onPress={() => act.setView(y => ({ ...y, project: p }))} />
+              </Box>
+              <Box flexDirection="row" flexWrap="wrap">
+                <Text color={ORANGE}>{d.on}</Text><Text color={EMPTY}>{d.off}</Text>
+                <Text color={TEXT} bold>{` ${tok(x.tokens)}`}</Text>
+                <Text color={MUTED}>{` · ${pct(share)} · ${x.sessions.size} sess · ${x.messages} msgs${prev ? ' · ' + (pr ? trend(change(x.tokens, pr.tokens)) : 'new') : ''}`}</Text>
+              </Box>
+            </Box>,
+          )
+        }
+      }
+      out.push(note1('pr-n', 'Share and trend use activity tokens. Select a project for its details. Project names come from aliases, git roots or folders (see Settings).'))
+    }
+  }
+
+  // ---------------------------------------------------------------- Models
+  if (pv.tab === 'models') {
+    const by = pv.modelBy
+    // First on this tab: "Compare models" in the band lands here.
+    if (v.costs && v.cache) out.push(...costTable(ui, v, cols, 'mod'))
+    else out.push(section('h-nm-none', 'NEXT MESSAGE', 'by model'), note1('nm-none', 'No estimate yet: it needs the first reply of this session (the context size and the cache clock).'))
+    out.push(section('h-md', `MODELS · ${PERIOD_LABEL[period]}`))
+    out.push(row('md-m', [<Text key="l" color={MUTED}>Compare by</Text>, ...(['tokens', 'sessions', 'messages'] as const).map(m => choice(`md-${m}`, m, by === m, () => act.setView(x => ({ ...x, modelBy: m }))))]))
+    const rows = [...cur.byModel.entries()].map(([m, x]) => ({ m, x, n: metricOf(x, by) })).sort((x, y) => y.n - x.n)
+    const total = rows.reduce((x, y) => x + y.n, 0) || 1
+    for (const r of rows) {
+      const share = (r.n / total) * 100
+      const d = dots(share, Math.max(8, Math.min(20, cols - 34)))
+      out.push(
+        <Box key={`md-${r.m}`} flexDirection="row" flexWrap="wrap">
+          {cell(`${r.m}n`, modelName(r.m), 12, TEXT)}
+          {cell(`${r.m}v`, fmtMetric(r.n, by), 9, TEXT, true)}
+          {cell(`${r.m}p`, pct(share), 6, MUTED)}
+          <Text color={ORANGE}>{d.on}</Text><Text color={EMPTY}>{d.off}</Text>
+        </Box>,
+      )
+    }
+    if (by === 'sessions') out.push(note1('md-n', 'A session that used two models counts for both.'))
+    out.push(section('h-mc', 'CACHE USE BY MODEL'))
+    const W = [12, 9, 9, 9]
+    out.push(<Box key="mc-h" flexDirection="row">{['Model', 'Writes', 'Reads', 'From cache'].map((t, i) => cell(`mch${i}`, t, W[i], MUTED, true))}</Box>)
+    for (const r of rows) {
+      const inAll = r.x.input + r.x.cw + r.x.cr
+      out.push(
+        <Box key={`mc-${r.m}`} flexDirection="row">
+          {cell(`${r.m}a`, modelName(r.m), W[0])}
+          {cell(`${r.m}b`, tok(r.x.cw), W[1])}
+          {cell(`${r.m}c`, tok(r.x.cr), W[2], MUTED)}
+          {cell(`${r.m}d`, inAll ? pct((r.x.cr / inAll) * 100) : '–', W[3])}
+        </Box>,
+      )
+    }
+    out.push(note1('mc-n', 'From cache = cache reads as a share of all input the model received in the period.'))
+  }
+
+  // ---------------------------------------------------------------- Patterns
+  if (pv.tab === 'patterns') {
+    const by = pv.heat ?? st.heat
+    out.push(section('h-hm', 'ACTIVITY HEATMAP', 'one square per day, darker is more'))
+    out.push(row('hm-m', [<Text key="l" color={MUTED}>Metric</Text>, ...(['tokens', 'sessions', 'messages'] as const).map(m => choice(`hm-${m}`, m, by === m, () => act.setView(x => ({ ...x, heat: m }))))]))
+    const all = q(addDays(today, -370), today)
+    if (Svg) {
+      const hm = heatSvg(all.byDay, period === 'today' || period === '7d' || period === '30d' ? addDays(today, -90) : rg.from, today, by, Math.min(cols * 8, 760))
+      out.push(<Box key="hm"><Svg source={hm.source} alt={hm.alt} width={hm.w} height={hm.h} isInteractive /></Box>)
+    } else {
+      const days: string[] = []
+      for (let d = addDays(today, -27); d <= today; d = addDays(d, 1)) days.push(d)
+      const max = Math.max(1, ...days.map(d => (all.byDay.get(d) ? metricOf(all.byDay.get(d)!, by) : 0)))
+      out.push(<Text key="hm-t" color={ORANGE}>{days.map(d => ' ░▒▓█'[Math.ceil(((all.byDay.get(d) ? metricOf(all.byDay.get(d)!, by) : 0) / max) * 4)]).join('')}</Text>)
+    }
+    const sk = streaks(a, today)
+    out.push(grid('hm-s', [
+      metric('hm-d', 'Active days', `${cur.all.days.size} of ${nDays}`),
+      metric('hm-k', 'Current streak', `${sk.current}d`),
+      metric('hm-l', 'Longest streak', `${sk.longest}d`),
+    ]))
+    const pt = patterns(a, rg.from, rg.to, 'messages')
+    const tt = patterns(a, rg.from, rg.to, 'tokens')
+    out.push(section('h-tp', `TIME PATTERNS · ${PERIOD_LABEL[period]}`, 'local time'))
+    const hourLabels = pt.hours.map((_, h) => String(h).padStart(2, '0'))
+    if (Svg) {
+      const hs = histSvg(pt.hours, hourLabels, i => i % 6 === 0, Math.min(cols * 7, 480), 'messages')
+      out.push(<Box key="tp-h"><Svg source={hs.source} alt={hs.alt} width={hs.w} height={hs.h} isInteractive /></Box>)
+    } else {
+      const mx = Math.max(1, ...pt.hours)
+      out.push(<Text key="tp-h" color={ORANGE}>{pt.hours.map(h => ' ▁▂▃▄▅▆▇█'[Math.ceil((h / mx) * 8)]).join('')}</Text>)
+    }
+    const sumP = Object.values(pt.parts).reduce((x, y) => x + y, 0) || 1
+    out.push(grid('tp', [
+      pt.peakHour >= 0 ? metric('tp-ph', 'Peak hour, messages', HOURS(pt.peakHour)) : null,
+      tt.peakHour >= 0 ? metric('tp-pt', 'Peak hour, tokens', HOURS(tt.peakHour)) : null,
+      pt.peakDay >= 0 ? metric('tp-pd', 'Peak weekday', DAYS[pt.peakDay], TEXT, 'by messages') : null,
+      metric('tp-m', 'Morning 05-12', pct((pt.parts.morning / sumP) * 100)),
+      metric('tp-a', 'Afternoon 12-17', pct((pt.parts.afternoon / sumP) * 100)),
+      metric('tp-e', 'Evening 17-22', pct((pt.parts.evening / sumP) * 100)),
+      metric('tp-n', 'Night 22-05', pct((pt.parts.night / sumP) * 100)),
+    ]))
+    if (Svg) {
+      const ws = histSvg(pt.week, DAYS, () => true, Math.min(cols * 7, 300), 'messages')
+      out.push(<Box key="tp-w" marginTop={1}><Svg source={ws.source} alt={ws.alt} width={ws.w} height={ws.h} isInteractive /></Box>)
+    } else {
+      const wmx = Math.max(1, ...pt.week)
+      for (const [i, n] of pt.week.entries()) out.push(<Box key={`tp-w${i}`} flexDirection="row"><Box width={5} flexShrink={0}><Text color={MUTED}>{DAYS[i]}</Text></Box><Text color={ORANGE}>{'▮'.repeat(Math.max(n ? 1 : 0, Math.round((n / wmx) * 10)))}</Text></Box>)
+    }
+    out.push(note1('tp-x', 'Hours and weekdays count messages.'))
+    out.push(section('h-sp', 'SESSION PATTERNS'))
+    const ss = sessionsOf(cur).map(([sid, x]) => ({ sid, x, s: a.sess[sid] })).filter(r => r.s)
+    const acts = ss.map(r => r.s.act).filter(x => x > 0)
+    const toks = ss.map(r => r.x.tokens)
+    const msgs = ss.map(r => r.x.messages)
+    out.push(grid('sp', [
+      acts.length ? metric('sp-a', 'Active / session', dur(median(acts)), TEXT, `median · avg ${dur(mean(acts))}`) : null,
+      metric('sp-t', 'Tokens / session', tok(median(toks)), TEXT, `median · avg ${tok(mean(toks))}`),
+      metric('sp-m', 'Msgs / session', String(Math.round(median(msgs))), TEXT, `median · avg ${Math.round(mean(msgs))}`),
+      metric('sp-b', 'Sessions >100K', String(toks.filter(x => x > 100_000).length)),
+    ]))
+    const longest = [...ss].sort((x, y) => y.x.tokens - x.x.tokens).slice(0, 5)
+    if (longest.length) out.push(note1('sp-h', 'Largest sessions in the period:'))
+    for (const r of longest) {
+      out.push(
+        <Box key={`sp-${r.sid}`} flexDirection="column">
+          <Text color={TEXT}>{r.s.title || r.sid.slice(0, 8)}</Text>
+          <Text color={MUTED}>{`${tok(r.x.tokens)} tokens · ${r.x.messages} msgs · ${dur(r.s.act)} active · ${resolve(r.s.cwd ?? '').name}`}</Text>
+        </Box>,
+      )
+    }
+  }
+
+  // ---------------------------------------------------------------- Settings
+  if (pv.tab === 'settings') {
+    out.push(section('h-st', 'APPEARANCE', 'The bar above the prompt'))
+    // One control per row, each with a line saying what it does.
+    const setting = (key: string, label: string, choices: any[], what: string) => (
+      <Box key={key} flexDirection="column" marginBottom={1}>
+        {row(`${key}-r`, [<Text key="l" bold>{label}</Text>, ...choices])}
+        <Text key="w" color={MUTED}>{what}</Text>
+      </Box>
+    )
+    out.push(setting('st1', 'Show bar', [
+      choice('st-on', 'On', st.isOn, () => act.setSettings(x => ({ ...x, isOn: true }))),
+      choice('st-off', 'Off', !st.isOn, () => act.setSettings(x => ({ ...x, isOn: false }))),
+    ], "Turns the whole Lucelis bar above the prompt on or off."))
+    if (!st.isOn) out.push(note1('st-offn', 'The bar is off. The row above the prompt is left to Claude Code or another plugin. Turn it on again here, or with /lucelis-settings.', WARM))
+    out.push(setting('st1b', 'Display mode', (['minimal', 'normal', 'detailed'] as const).map(m => choice(`st-${m}`, m[0].toUpperCase() + m.slice(1), st.mode === m, () => act.setSettings(x => ({ ...x, mode: m })))),
+      st.mode === 'minimal' ? 'Minimal: Only the 5H and 7D quotas.'
+        : st.mode === 'normal' ? 'Normal: One row with every enabled item that fits, usage first.'
+        : 'Detailed: Always two rows. The second row holds project, session, today, elapsed, trend and model.'))
+    out.push(setting('st1c', 'Wrap to a second row', [
+      choice('wr-on', 'On', !!st.wrap, () => act.setSettings(x => ({ ...x, wrap: true }))),
+      choice('wr-off', 'Off', !st.wrap, () => act.setSettings(x => ({ ...x, wrap: false }))),
+    ], 'In Normal mode, items that do not fit on the first row move to a second row. A wide window stays on one row.'))
+    out.push(setting('st1d', 'Lucelis logo', [
+      choice('lg-on', 'On', !!st.logo, () => act.setSettings(x => ({ ...x, logo: true }))),
+      choice('lg-off', 'Off', !st.logo, () => act.setSettings(x => ({ ...x, logo: false }))),
+    ], 'Shows the Lucelis logo at the start of the bar (desktop app). Its glint pulses slowly while Claude is working on a reply.'))
+    out.push(setting('st1e', 'Bar background', [
+      choice('bg-on', 'On', !!st.bg, () => act.setSettings(x => ({ ...x, bg: true }))),
+      choice('bg-off', 'Off', !st.bg, () => act.setSettings(x => ({ ...x, bg: false }))),
+    ], "On: A navy fill behind the bar items. Off: The bar uses the app's own background and text colour."))
+    out.push(section('h-sh', 'COMPACT BAR ITEMS', 'In priority order: placed first, dropped last'))
+    // Each item's real state on the bar right now (the same layout code the bar draws with).
+    const lay = st.isOn && bandColumns ? barLayout(v, st, bandColumns) : null
+    const SAY: Record<ItemState, [string, string]> = {
+      shown: ['shown', GOOD],
+      off: ['off', EMPTY],
+      density: ['on · hidden in Minimal mode (quotas only)', ORANGE],
+      width: ['on · no room at this width', ORANGE],
+      nodata: ['on · no data yet', MUTED],
+    }
+    for (const it of ITEMS) {
+      const on = st.show[it.key]
+      const state: ItemState | null = !on ? 'off' : lay ? lay.state[it.key] : null
+      const [text, color] = state ? SAY[state] : ['on', MUTED]
+      out.push(
+        <Box key={`it-${it.key}`} flexDirection="row" flexWrap="wrap" columnGap={1} alignItems="center">
+          <Box width={24} flexShrink={0} flexDirection="row">{choice(`sh-${it.key}`, `${on ? '✓' : '○'} ${it.label}`, on, () => act.setSettings(x => ({ ...x, show: { ...x.show, [it.key]: !x.show[it.key] } })))}</Box>
+          <Text key="state" color={color}>{state === 'nodata' ? `${text}: ${it.nodata}` : text}</Text>
+        </Box>,
+      )
+    }
+    if (lay) {
+      const waiting = ITEMS.filter(it => lay.state[it.key] === 'width').map(it => it.label)
+      out.push(note1('st-w', `The bar is ${bandColumns} columns wide now${waiting.length ? `: no room for ${waiting.join(', ')}. This pane narrows the bar while it is open. Close it (Details) or widen the window and they appear, in the order above. Turning an item off gives its room to the next one.` : ' and every enabled item with data fits.'}`, waiting.length ? ORANGE : MUTED))
+    } else if (!st.isOn) out.push(note1('st-w', 'The bar is off, so no item is drawn.'))
+    out.push(note1('st-e', 'A toggle always wins: nothing is forced onto the bar. With every item off the bar says so and keeps its two buttons.'))
+    out.push(section('h-sd', 'DASHBOARD'))
+    out.push(row('st3', [<Text key="l" color={MUTED}>Default period</Text>, ...PERIODS.map(p => choice(`dp-${p}`, PERIOD_LABEL[p], st.period === p, () => act.setSettings(x => ({ ...x, period: p }))))]))
+    out.push(row('st4', [<Text key="l" color={MUTED}>Heatmap metric</Text>, ...(['tokens', 'sessions', 'messages'] as const).map(m => choice(`dh-${m}`, m, st.heat === m, () => act.setSettings(x => ({ ...x, heat: m }))))]))
+    out.push(note1('st-sv', 'Settings are saved at once and kept across sessions.'))
+    out.push(section('h-al', 'PROJECT ALIASES', 'longest matching path wins'))
+    out.push(note1('al-n', 'When detection is ambiguous, map a folder (and everything under it) to one project name.'))
+    for (const [i, al] of aliases.entries()) {
+      out.push(
+        <Box key={`al-${i}`} flexDirection="column" marginBottom={0}>
+          <Box flexDirection="row"><Text color={TEXT} bold>{al.name}</Text><Text color={MUTED}>{'  ← ' + al.path}</Text></Box>
+          <Box flexDirection="row"><Button key={`al-rm-${i}`} variant="secondary" label="Remove" onPress={() => act.setSettings(x => ({ ...x, aliases: (x.aliases ?? []).filter((_, j) => j !== i) }))} /></Box>
+        </Box>,
+      )
+    }
+    if (Input) {
+      out.push(<Input key="alias-add" label="Add alias" value="" placeholder="C:\path\to\folder => Name" submitLabel="Add" onSubmit={(text: string) => {
+        const m = /^(.+?)\s*=>\s*(.+)$/.exec(text.trim())
+        if (m) act.setSettings(x => ({ ...x, aliases: [...(x.aliases ?? []).filter(y => y.path.toLowerCase() !== m[1].trim().toLowerCase()), { path: m[1].trim(), name: m[2].trim() }] }))
+      }} />)
+    }
+    out.push(section('h-dp', 'DETECTED PROJECTS'))
+    const seen = new Map<string, { name: string; source: string }>()
+    for (const k in a.rows) { const pr = resolve(k.split('\t')[2]); if (!seen.has(pr.key)) seen.set(pr.key, { name: pr.name, source: pr.source }) }
+    for (const [k, e] of [...seen.entries()].sort()) {
+      out.push(
+        <Box key={`dp-${k}`} flexDirection="column">
+          <Box flexDirection="row"><Text color={TEXT} bold>{e.name}</Text><Text color={MUTED}>{'  ' + e.source}</Text></Box>
+          <Text color={MUTED}>{k}</Text>
+        </Box>,
+      )
+    }
+    out.push(section('h-dd', 'DATA'))
+    out.push(row('st5', [
+      <Button key="refresh" variant="secondary" label="Refresh" onPress={act.refresh} />,
+      <Button key="rebuild" variant="secondary" label="Rebuild cache" onPress={act.rebuild} />,
+    ]))
+    out.push(note1('dd-s', note ? `Last result: ${note}` : 'Last result: none yet', note.startsWith('refresh failed') ? WARM : TEXT))
+    out.push(note1('dd-n', `Cache ~/.claude/lucelis/cache-a.json + cache-b.json · parser v${a.v} · built ${new Date(a.built).toISOString().slice(0, 16).replace('T', ' ')} UTC${a.parseErrors ? ` · ${a.parseErrors} unreadable lines skipped` : ''}${a.flagged ? ` · ${a.flagged} damaged records excluded` : ''}`))
+    out.push(note1('dd-p', 'Local-only • No telemetry • No model calls • No external server'))
+  }
+
+  if (pv.tab !== 'settings' && note) out.push(<Box key="foot" marginTop={1}><Text color={MUTED}>{`History: ${note}`}</Text></Box>)
+  return <Box flexDirection="column" paddingX={1}>{out}</Box>
+
+  // ---- the next-message cost table (Session and Models)
+  function costTable(ui2: El, v2: View, width: number, k: string) {
+    const { Box: B, Text: T } = ui2
+    const rows2 = v2.costs ?? []
+    const wide = width >= 46
+    const W = wide ? [13, 9, 9, 9] : [12, 8, 8]
+    const head = wide ? ['Model', 'Now', 'If cold', 'Saves'] : ['Model', 'Now', 'If cold']
+    const items: any[] = [section(`h-nm-${k}`, 'NEXT MESSAGE', 'API-price equivalent estimate, not your bill')]
+    items.push(<B key={`nm-h-${k}`} flexDirection="row">{head.map((t, i) => cell(`nmh${k}${i}`, t, W[i], MUTED, true))}</B>)
+    for (const r of rows2 as CostRow[]) {
+        if (r.isUnpriced) {
+        items.push(<B key={`nm-${k}-${r.id}`} flexDirection="column"><T color={TEXT} bold>{`${r.name} ◂ yours`}</T><T color={MUTED}>No price on record for this model id: not estimated.</T></B>)
+        continue
+      }
+      items.push(
+        <B key={`nm-${k}-${r.id}`} flexDirection="row">
+          {cell(`${k}${r.id}n`, `${r.mode === 'warm' ? '●' : '○'} ${r.name}`, W[0], r.isMine ? TEXT : MUTED, r.isMine)}
+          {cell(`${k}${r.id}a`, usd(r.now), W[1], r.isMine ? TEXT : MUTED, r.isMine)}
+          {cell(`${k}${r.id}b`, usd(r.cold), W[2], MUTED)}
+          {wide ? cell(`${k}${r.id}c`, r.saves > 0.0049 ? usd(r.saves) : '–', W[3], r.saves > 0.0049 ? GOOD : EMPTY) : null}
+        </B>,
+      )
+    }
+    const mine = rows2.find(r => r.isMine)
+    const cheapest = rows2.find(r => r.isCheapest)
+    items.push(<T key={`nm-k-${k}`} color={MUTED}>{`● warm  ○ cold (each model has its own cache: another model starts cold)${mine ? ` · yours: ${mine.name} (bold)` : ''}${cheapest && !cheapest.isMine ? ` · lowest now: ${cheapest.name}` : ''}`}</T>)
+    items.push(<T key={`nm-n-${k}`} color={MUTED}>{v2.composition?.basis === 'measured'
+      ? `Next prompt ≈ ${tok(v2.composition.read)} read from cache + ${tok(v2.composition.write)} new tail written (measured from your last request). Excludes your new message and all output. Prices as of ${PRICES_AS_OF}.`
+      : `Assumes all ${tok(v2.cache?.resend ?? 0)} of context is a cache hit (no request on record yet), so warm is a lower bound. Excludes your new message and all output. Prices as of ${PRICES_AS_OF}.`}</T>)
+    return items
+  }
+}

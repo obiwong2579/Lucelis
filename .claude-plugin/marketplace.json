@@ -1,0 +1,21 @@
+{
+  "name": "lucelis",
+  "metadata": {
+    "description": "Lucelis for Claude Code: a local-only usage bar and activity dashboard for Windows.",
+    "version": "1.0.0"
+  },
+  "owner": {
+    "name": "obiwong2579"
+  },
+  "plugins": [
+    {
+      "name": "lucelis",
+      "source": "./",
+      "description": "Lucelis for Claude Code: usage bar, session summary and local activity dashboard for Windows. Local-only, no telemetry, no model calls, no external server.",
+      "author": {
+        "name": "obiwong2579"
+      },
+      "license": "PolyForm-Noncommercial-1.0.0"
+    }
+  ]
+}

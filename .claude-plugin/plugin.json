@@ -1,0 +1,20 @@
+{
+  "name": "lucelis",
+  "version": "1.0.0",
+  "description": "Lucelis for Claude Code: a lightweight usage bar and local activity dashboard for Windows. Shows 5-hour and 7-day quota left, prompt-cache state, context usage, current-session activity, next-message cost estimates and project/model history. Local-only, no telemetry, no model calls, no external server.",
+  "author": {
+    "name": "obiwong2579"
+  },
+  "homepage": "https://github.com/obiwong2579/Lucelis",
+  "repository": "https://github.com/obiwong2579/Lucelis",
+  "license": "PolyForm-Noncommercial-1.0.0",
+  "keywords": [
+    "usage",
+    "quota",
+    "statusline",
+    "activity",
+    "dashboard",
+    "windows"
+  ],
+  "types": "./types/index.d.ts"
+}
