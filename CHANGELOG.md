@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.2 — 2026-11-10
+
+- Maintenance release: documentation and packaging details tidied. No change to the plugin's behaviour.
+
 ## 1.0.1 — 2026-11-10
 
 - README: pictures of the bar, More and the dashboard, drawn from the plugin's own output with sample data. No change to the plugin's behaviour.
