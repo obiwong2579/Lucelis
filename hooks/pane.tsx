@@ -595,7 +595,7 @@ export const paneTree = (ui: El, a: Agg | null, v: View, pv: PaneView, st: Setti
     out.push(setting('st1d', 'Lucelis logo', [
       choice('lg-on', 'On', !!st.logo, () => act.setSettings(x => ({ ...x, logo: true }))),
       choice('lg-off', 'Off', !st.logo, () => act.setSettings(x => ({ ...x, logo: false }))),
-    ], 'Shows the Lucelis logo at the start of the bar (desktop app). Its bars draw in while Claude is working on a reply, and its glint turns red while a quota is low.'))
+    ], 'Shows the Lucelis logo at the start of the bar (desktop app). Its bars draw in while Claude is working on a reply, and it turns red while a quota is low.'))
     out.push(setting('st1e', 'Bar background', [
       choice('bg-on', 'On', !!st.bg, () => act.setSettings(x => ({ ...x, bg: true }))),
       choice('bg-off', 'Off', !st.bg, () => act.setSettings(x => ({ ...x, bg: false }))),
@@ -609,7 +609,7 @@ export const paneTree = (ui: El, a: Agg | null, v: View, pv: PaneView, st: Setti
     out.push(setting('wn1', 'Warning', [
       choice('wn-on', 'On', w.on, () => setWarn({ on: true })),
       choice('wn-off', 'Off', !w.on, () => setWarn({ on: false })),
-    ], 'At or under the level above, the 5H or 7D figure and the logo glint turn red. On: you are also told once per quota window.'))
+    ], 'At or under the level above, the 5H or 7D figure and the logo turn red. On: you are also told once per quota window.'))
     if (w.on) {
       out.push(setting('wn2', 'Pop-up in the app', [
         choice('wt-on', 'On', w.toast, () => setWarn({ toast: true })),

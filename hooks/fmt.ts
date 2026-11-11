@@ -29,26 +29,34 @@ export const quotaHealth = (left: number, level: number): string => (left <= lev
 
 const SVG_OPEN = '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">'
 const L_PATH = '<path d="M7 5.5 V23.1 Q7 25.5 9.6 25.5 H23.5" fill="none" stroke="#F5EFE4" stroke-width="4.6" stroke-linecap="round" stroke-linejoin="round"/>'
-const BARS_STILL = '<path d="M14 13.1 H23.1 M14 19.2 H20.4" fill="none" stroke="#7EC9C3" stroke-width="3.1" stroke-linecap="round"/>'
-/** Working: each teal bar draws in from the left, one after the other, holds, then fades back (2.6 s). */
-const BARS_REVEAL =
-  '<path d="M14 13.1 H23.1" fill="none" stroke="#7EC9C3" stroke-width="3.1" stroke-linecap="round" pathLength="1" stroke-dasharray="1 2">' +
-  '<animate attributeName="stroke-dashoffset" values="1;0;0;0" keyTimes="0;0.35;0.85;1" dur="2.6s" repeatCount="indefinite"/>' +
-  '<animate attributeName="opacity" values="1;1;1;0" keyTimes="0;0.35;0.85;1" dur="2.6s" repeatCount="indefinite"/></path>' +
-  '<path d="M14 19.2 H20.4" fill="none" stroke="#7EC9C3" stroke-width="3.1" stroke-linecap="round" pathLength="1" stroke-dasharray="1 2">' +
-  '<animate attributeName="stroke-dashoffset" values="1;1;0;0;0" keyTimes="0;0.25;0.6;0.85;1" dur="2.6s" repeatCount="indefinite"/>' +
-  '<animate attributeName="opacity" values="1;1;1;0" keyTimes="0;0.35;0.85;1" dur="2.6s" repeatCount="indefinite"/></path>'
-const glint = (fill: string) => `<path d="M25.3 3.7 Q26.2 7.5 29.8 8.4 Q26.2 9.2 25.3 13 Q24.5 9.2 20.9 8.4 Q24.5 7.5 25.3 3.7Z" fill="${fill}"/>`
+/** Three bars, shortest at the top, clear of the glint. */
+const BAR_D = ['M13.6 10.6 H18.4', 'M13.6 15.7 H21.2', 'M13.6 20.8 H23.4']
+const BAR_ATTR = (c: string) => `fill="none" stroke="${c}" stroke-width="2.9" stroke-linecap="round"`
+const barsStill = (c: string) => `<path d="${BAR_D.join(' ')}" ${BAR_ATTR(c)}/>`
+/** Working: each bar draws in from the left, top to bottom, holds, then fades back (2.6 s). */
+const REVEAL: [string, string][] = [
+  ['1;0;0;0', '0;0.25;0.85;1'],
+  ['1;1;0;0;0', '0;0.15;0.4;0.85;1'],
+  ['1;1;0;0;0', '0;0.3;0.55;0.85;1'],
+]
+const barsReveal = (c: string) => BAR_D.map((d, i) =>
+  `<path d="${d}" ${BAR_ATTR(c)} pathLength="1" stroke-dasharray="1 2">` +
+  `<animate attributeName="stroke-dashoffset" values="${REVEAL[i][0]}" keyTimes="${REVEAL[i][1]}" dur="2.6s" repeatCount="indefinite"/>` +
+  '<animate attributeName="opacity" values="1;1;1;0" keyTimes="0;0.35;0.85;1" dur="2.6s" repeatCount="indefinite"/></path>').join('')
+/** The four-point glint, a little higher and larger than in 1.0 so it reads at 16 px. */
+const glint = (fill: string) => '<path d="M25.70 0.29 Q26.82 4.97 31.32 6.10 Q26.82 7.22 25.70 11.91 Q24.57 7.22 20.20 6.10 Q24.57 4.97 25.70 0.29Z" fill="' + fill + '"/>'
 const mark = (bars: string, glintFill: string) => `${SVG_OPEN}${L_PATH}${bars}${glint(glintFill)}</svg>`
+const TEAL = '#7EC9C3'
+const GOLD = '#D9B46A'
 
-/** The Lucelis mark (rounded L, two reveal bars, glint). Drawn only where the surface has Svg. Still. */
-export const LOGO = mark(BARS_STILL, '#D9B46A')
+/** The Lucelis mark (rounded L, three bars, glint). Drawn only where the surface has Svg. Still. */
+export const LOGO = mark(barsStill(TEAL), GOLD)
 /** While Claude is working on a turn: the bars draw in, one after the other. Still otherwise. */
-export const LOGO_WORKING = mark(BARS_REVEAL, '#D9B46A')
-/** A quota at or under its warning level: the glint turns red. No motion of its own. */
-export const LOGO_LOW = mark(BARS_STILL, '#ef5d58')
-/** Low quota while working: the bars draw in and the glint stays red. */
-export const LOGO_WORKING_LOW = mark(BARS_REVEAL, '#ef5d58')
+export const LOGO_WORKING = mark(barsReveal(TEAL), GOLD)
+/** A quota at or under its warning level: the bars and the glint turn red. No motion of its own. */
+export const LOGO_LOW = mark(barsStill(RED), RED)
+/** Low quota while working: the bars draw in, red, with a red glint. */
+export const LOGO_WORKING_LOW = mark(barsReveal(RED), RED)
 /** The mark for a state: idle or working, quota fine or low. */
 export const logoFor = (working: boolean, low: boolean): string =>
   working ? (low ? LOGO_WORKING_LOW : LOGO_WORKING) : (low ? LOGO_LOW : LOGO)

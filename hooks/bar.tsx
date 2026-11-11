@@ -240,7 +240,7 @@ export const compactRow = (ui: El, v: View, st: Settings, columns: number, expan
   }
   const top = line(L.rows[0], 'a')
   // Only where the surface draws SVG (not the terminal): no text stand-in, no image hack.
-  // The glint turns red while a quota is at or under its warning level; the bars draw in while Claude works.
+  // The bars and glint turn red while a quota is at or under its warning level; the bars draw in while Claude works.
   const low = v.quotas.some(q => { const l = levelFor(q.kind, st.warn); return !q.stale && l !== null && q.left <= l })
   const src = logoFor(working, low)
   const alt = `Lucelis${working ? ', working' : ''}${low ? ', quota low' : ''}`

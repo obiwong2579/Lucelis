@@ -34,8 +34,8 @@ Lucelis has three levels. Each one opens the next.
 | `Fable 5.2` | Current model. |
 
 - **Health colours.** The 5H and 7D figures are green with 70% or more left, red at or under your low level (30% by default, set in Settings), and yellow between. Context is green from 70% left, yellow from 30%, red below.
-- **The Lucelis mark** leads the bar in the desktop app. Its two bars draw in while Claude is working on a reply and it is still otherwise. Its glint turns red while a quota is at or under your warning level.
-- **Low-quota warning.** When what is left of the 5-hour or 7-day quota drops to your level (30% by default), its figure on the bar and the logo glint turn red, and Lucelis tells you once for that quota window: a short pop-up in the app, and a Windows notification if you turn that on. With several sessions open, only one of them warns.
+- **The Lucelis mark** leads the bar in the desktop app: a rounded L with three bars and a glint. The bars draw in, top to bottom, while Claude is working on a reply, and it is still otherwise. The bars and the glint turn red while a quota is at or under your warning level.
+- **Low-quota warning.** When what is left of the 5-hour or 7-day quota drops to your level (30% by default), its figure on the bar and the logo turn red, and Lucelis tells you once for that quota window: a short pop-up in the app, and a Windows notification if you turn that on. With several sessions open, only one of them warns.
 - **One or two lines.** On a wide window everything sits on one row; on a narrow one, items that do not fit move to a second row.
 - **Tight on a narrow window.** Before 5H, 7D, cache or context would be left out, the row gets shorter instead: `5H 76 7D 52 WARM CTX 41` (no % signs or separators; the colours keep their meaning), then `5H 76 7D 52 W C 41`. Reset times and cache minutes are then in More. 5H and 7D are never left out.
 - **Last seen after a restart.** Until a new session's first reply, the bar shows the last 5H and 7D figures from an earlier session, dimmed and marked *last seen*, while their window has not reset. They are never coloured or warned about, and the live figures replace them on the first reply.
@@ -148,7 +148,7 @@ Only one plugin can draw the row above the prompt. If you also run another one t
 - **Display mode.** Minimal: the two quotas. Normal: one row with everything that fits. Detailed: always two rows.
 - **Wrap to a second row.** In Normal mode, items that do not fit the first row move to a second one. On a wide window the bar stays one row.
 - **Lucelis logo.** The logo at the start of the bar. On by default.
-- **Low-quota warning.** On by default. Low level for 5H and 7D (10, 20, 30 or 40% left; 30% by default): at or under it the figure and the logo glint are red. The warning on/off governs only the in-app pop-up (on), a Windows notification (off), and with notifications on, a "quota is back" notification booked for the reset time (off).
+- **Low-quota warning.** On by default. Low level for 5H and 7D (10, 20, 30 or 40% left; 30% by default): at or under it the figure and the logo are red. The warning on/off governs only the in-app pop-up (on), a Windows notification (off), and with notifications on, a "quota is back" notification booked for the reset time (off).
 - **Bar background.** Off by default: the bar uses the app's own background and text colour, in light and dark themes. On puts a navy fill behind the bar items.
 - **Compact bar items.** One toggle per item, listed in priority order. Each shows its state: shown, off, hidden by Minimal, no room at this width, or no data yet.
 - **Dashboard.** Default period and heatmap metric.

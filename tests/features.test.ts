@@ -153,7 +153,7 @@ test('warning off: nothing at all', async ($, on) => {
 
 // ---------------------------------------------------------------- logo
 
-test('logo states: still when idle, bars draw in while working, red glint while low; the L still follows the theme', async () => {
+test('logo states: still when idle, bars draw in while working, three bars, all red while low; the L still follows the theme', async () => {
   expect(logoFor(false, false)).toBe(LOGO)
   expect(logoFor(true, false)).toBe(LOGO_WORKING)
   expect(logoFor(false, true)).toBe(LOGO_LOW)
@@ -162,6 +162,10 @@ test('logo states: still when idle, bars draw in while working, red glint while 
   expect(LOGO_LOW.includes('<animate')).toBe(false)
   expect(LOGO_WORKING.includes('stroke-dashoffset') && LOGO_WORKING.includes('pathLength="1"')).toBe(true)
   expect(LOGO_LOW.includes('#ef5d58') && !LOGO.includes('#ef5d58')).toBe(true)
+  // Three bars; when low, the bars are red too (not just the small glint), and no teal is left.
+  expect((LOGO.match(/M13.6 /g) ?? []).length).toBe(3)
+  expect((LOGO_WORKING.match(/<animate attributeName="stroke-dashoffset"/g) ?? []).length).toBe(3)
+  for (const s of [LOGO_LOW, LOGO_WORKING_LOW]) expect(s.includes('#7EC9C3')).toBe(false)
   for (const s of [LOGO, LOGO_WORKING, LOGO_LOW, LOGO_WORKING_LOW]) expect(adaptiveLogo(s)).toContain('class="l"')
 })
 
