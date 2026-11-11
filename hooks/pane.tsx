@@ -190,10 +190,26 @@ export const paneTree = (ui: El, a: Agg | null, v: View, pv: PaneView, st: Setti
   const rule = '─'.repeat(Math.max(8, Math.min(Math.floor((cols - 2) * 0.7), 90)))
   /** A subtitle as a sentence: capital first letter, full stop. */
   const sentence = (t: string) => { const x = t.trim(); const y = x ? x[0].toUpperCase() + x.slice(1) : x; return /[.!?:]$/.test(y) ? y : y + '.' }
-  /** `period`: the period choice sits under this heading (the part of the tab it changes). `gap`: lines above. */
-  const section = (key: string, title: string, sub?: string, o: { period?: boolean; gap?: number } = {}) => (
+  // An ⓘ that opens `what` in a small dark card just above it, only while the pointer is on the
+  // ⓘ itself (desktop app). The card sits above because a placed box covers what comes before
+  // it, not what follows. `back`: columns the card reaches back to the left, to start under
+  // its title. Without a pointer (terminal) there is no ⓘ and the caller shows a line instead.
+  const CARD_W = Math.max(24, Math.min(56, cols - 4))
+  const info = (key: string, what: string, back = 0) => act.hover ? (
+    <Box key={`i-${key}`} flexDirection="row" flexShrink={0}>
+      <Text color={MUTED}> ⓘ</Text>
+      <Box position="absolute" bottom={1} left={-Math.min(back, 20)} width={CARD_W} display="none" hover={{ display: 'flex' }}
+        borderStyle="round" borderColor={LINE} backgroundColor={CARD_BG} paddingX={1}>
+        <Text color={CARD_TEXT}>{what}</Text>
+      </Box>
+    </Box>
+  ) : null
+  /** A note that, in the desktop app, lives behind an ⓘ instead (see `info`). */
+  const aside = (key: string, text: string, color = MUTED) => (act.hover ? null : note1(key, text, color))
+  /** `period`: the period choice sits under this heading (the part of the tab it changes). `gap`: lines above. `help`: an ⓘ. */
+  const section = (key: string, title: string, sub?: string, o: { period?: boolean; gap?: number; help?: string } = {}) => (
     <Box key={key} flexDirection="column" marginTop={o.gap ?? 1}>
-      <Text color={TEXT} bold>{title}</Text>
+      {o.help && act.hover ? <Box flexDirection="row"><Text color={TEXT} bold>{title}</Text>{info(key, o.help, title.length)}</Box> : <Text color={TEXT} bold>{title}</Text>}
       {sub ? <Text color={MUTED}>{sentence(sub)}</Text> : null}
       <Text color={LINE}>{rule}</Text>
       {o.period && periodRow ? periodRow : null}
@@ -203,14 +219,17 @@ export const paneTree = (ui: El, a: Agg | null, v: View, pv: PaneView, st: Setti
   // Narrow pane: one metric per line, label then value (half the height of label-over-value).
   // Wide pane: label over value in fixed-width cells that flow into columns.
   const narrowPane = cols < CELL * 2 + 4
-  const metric = (key: string, label: string, value: string, color = TEXT, hint?: string) => narrowPane ? (
+  const metricLabel = (key: string, label: string, help?: string) => (help && act.hover
+    ? <Box flexDirection="row"><Text color={MUTED}>{label}</Text>{info(key, help, label.length)}</Box>
+    : <Text color={MUTED}>{label}</Text>)
+  const metric = (key: string, label: string, value: string, color = TEXT, hint?: string, help?: string) => narrowPane ? (
     <Box key={key} flexDirection="row" flexWrap="wrap" width="100%">
-      <Box width={19} flexShrink={0}><Text color={MUTED}>{label}</Text></Box>
+      <Box width={19} flexShrink={0}>{metricLabel(key, label, help)}</Box>
       <Text color={color} bold>{value}</Text>{hint ? <Text color={MUTED}>{' ' + hint}</Text> : null}
     </Box>
   ) : (
     <Box key={key} width={CELL} flexShrink={0} flexDirection="column" marginBottom={0}>
-      <Text color={MUTED}>{label}</Text>
+      {metricLabel(key, label, help)}
       <Box flexDirection="row"><Text color={color} bold>{value}</Text>{hint ? <Text color={MUTED}>{' ' + hint}</Text> : null}</Box>
     </Box>
   )
@@ -261,12 +280,12 @@ export const paneTree = (ui: El, a: Agg | null, v: View, pv: PaneView, st: Setti
     const topModel = [...cur.byModel.entries()].sort((x, y) => y[1].tokens - x[1].tokens)[0]
     const topProject = [...cur.byProject.entries()].sort((x, y) => y[1].tokens - x[1].tokens)[0]
     out.push(grid('ov', [
-      metric('ov-t', 'Activity tokens', tok(cur.all.tokens), TEXT, tr(cur.all.tokens, prev?.all.tokens)),
+      metric('ov-t', 'Activity tokens', tok(cur.all.tokens), TEXT, tr(cur.all.tokens, prev?.all.tokens), 'Uncached input + cache writes + output: the main measure of how much you used Claude. Cache reads are not in it.'),
       metric('ov-s', 'Sessions', String(cur.all.sessions.size), TEXT, tr(cur.all.sessions.size, prev?.all.sessions.size)),
       metric('ov-m', 'Messages', String(cur.all.messages), TEXT, tr(cur.all.messages, prev?.all.messages)),
-      metric('ov-d', 'Active days', `${cur.all.days.size} of ${nDays}`),
-      metric('ov-k', 'Streak', `${sk.current}d`, TEXT, `longest ${sk.longest}d`),
-      metric('ov-r', 'Cache reads', tok(cur.all.cr), MUTED, `processed ${tok(cur.all.processed)}`),
+      metric('ov-d', 'Active days', `${cur.all.days.size} of ${nDays}`, TEXT, undefined, 'Days in the period with at least one message.'),
+      metric('ov-k', 'Streak', `${sk.current}d`, TEXT, `longest ${sk.longest}d`, 'Days in a row, up to today, with at least one message; and the longest run so far.'),
+      metric('ov-r', 'Cache reads', tok(cur.all.cr), MUTED, `processed ${tok(cur.all.processed)}`, 'Context Claude read back from the prompt cache. Counted apart: the same context is re-read every turn and would swamp the rest. Processed = activity tokens + cache reads.'),
       topProject ? metric('ov-p', 'Top project', nameOf(topProject[0]), TEXT, cur.all.tokens ? pct((topProject[1].tokens / cur.all.tokens) * 100) : undefined) : null,
       topModel ? metric('ov-md', 'Top model', modelName(topModel[0]), TEXT, cur.all.tokens ? pct((topModel[1].tokens / cur.all.tokens) * 100) : undefined) : null,
     ]))
@@ -280,7 +299,7 @@ export const paneTree = (ui: El, a: Agg | null, v: View, pv: PaneView, st: Setti
     const twModel = [...tw.byModel.entries()].sort((x, y) => y[1].tokens - x[1].tokens)[0]
     out.push(section('h-wk', 'THIS WEEK', `Monday to today, against the same ${wk.days === 1 ? 'day' : `${wk.days} days`} of last week`))
     out.push(grid('wk', [
-      metric('wk-t', 'Activity tokens', tok(tw.all.tokens), TEXT, tr(tw.all.tokens, lw.all.tokens) ?? `last week ${tok(lwAll.all.tokens)} in all`),
+      metric('wk-t', 'Activity tokens', tok(tw.all.tokens), TEXT, tr(tw.all.tokens, lw.all.tokens) ?? `last week ${tok(lwAll.all.tokens)} in all`, 'Uncached input + cache writes + output: the main measure of how much you used Claude. Cache reads are not in it.'),
       metric('wk-s', 'Sessions', String(tw.all.sessions.size), TEXT, tr(tw.all.sessions.size, lw.all.sessions.size)),
       metric('wk-d', 'Active days', `${tw.all.days.size} of ${wk.days}`, TEXT, `last week ${lw.all.days.size} of ${wk.days}`),
       busiest ? metric('wk-b', 'Busiest day', `${DAYS[weekday(busiest[0])]} ${busiest[0].slice(5)}`, TEXT, tok(busiest[1].tokens)) : null,
@@ -318,31 +337,31 @@ export const paneTree = (ui: El, a: Agg | null, v: View, pv: PaneView, st: Setti
         s.model ? metric('id-m', 'Model', modelName(s.model)) : null,
         s.startedAt ? metric('id-s', 'Started', when(s.startedAt, a.tz, now)) : null,
         s.elapsedMs ? metric('id-e', 'Elapsed', dur(s.elapsedMs)) : null,
-        s.activeMs ? metric('id-a', 'Active (est.)', dur(s.activeMs)) : null,
+        s.activeMs ? metric('id-a', 'Active (est.)', dur(s.activeMs), TEXT, undefined, 'Time spent working: the gaps under 30 minutes between events, added up. Long breaks are left out.') : null,
         s.messages !== null ? metric('id-n', 'Messages', String(s.messages), TEXT, s.prompts !== null ? `${s.prompts} prompts` : undefined) : null,
       ]))
       out.push(section('h-tk', 'TOKENS'))
       out.push(grid('tk', [
-        s.tokens !== null ? metric('tk-a', 'Activity tokens', tok(s.tokens)) : null,
-        s.input !== null ? metric('tk-i', 'Input (uncached)', tok(s.input)) : null,
-        s.cacheWrite !== null ? metric('tk-w', 'Cache writes', tok(s.cacheWrite)) : null,
+        s.tokens !== null ? metric('tk-a', 'Activity tokens', tok(s.tokens), TEXT, undefined, 'Uncached input + cache writes + output: the main measure of how much you used Claude. Cache reads are not in it.') : null,
+        s.input !== null ? metric('tk-i', 'Input (uncached)', tok(s.input), TEXT, undefined, 'Input that was new to the model: not read from the prompt cache.') : null,
+        s.cacheWrite !== null ? metric('tk-w', 'Cache writes', tok(s.cacheWrite), TEXT, undefined, 'Input stored in the prompt cache, so later turns can read it back for less.') : null,
         s.output !== null ? metric('tk-o', 'Output tokens', tok(s.output)) : null,
-        s.cacheRead !== null ? metric('tk-r', 'Cache reads', tok(s.cacheRead), MUTED, 'kept separate') : null,
+        s.cacheRead !== null ? metric('tk-r', 'Cache reads', tok(s.cacheRead), MUTED, 'kept separate', 'Context Claude read back from the prompt cache. Counted apart: the same context is re-read every turn and would swamp the rest. Processed = activity tokens + cache reads.') : null,
       ]))
     }
     if (v.ctx) {
       const g = v.growth
       const d = dots(v.ctx.percent, 20)
       const col = v.ctx.isNearLimit ? WARM : TEXT
-      out.push(section('h-ch', 'CONTEXT HEALTH'))
+      out.push(section('h-ch', 'CONTEXT HEALTH', undefined, { help: "How full this conversation is. Near the model's limit, Claude compacts it: older turns are summarised to make room." }))
       out.push(<Box key="ch-m" flexDirection="row"><Text color={col}>{d.on}</Text><Text color={EMPTY}>{d.off}</Text><Text color={col} bold>{` ${v.ctx.percent}% used`}</Text></Box>)
       out.push(grid('ch', [
         metric('ch-u', 'Used', `${tok(v.ctx.tokens)} of ${tok(v.ctx.window)}`),
         metric('ch-l', 'Left', tok(v.ctx.left)),
-        s?.compactions !== null && s?.compactions !== undefined ? metric('ch-c', 'Compactions', String(s.compactions), TEXT, s.lastCompactionAgo !== null ? `last ${dur(s.lastCompactionAgo)} ago` : undefined) : null,
+        s?.compactions !== null && s?.compactions !== undefined ? metric('ch-c', 'Compactions', String(s.compactions), TEXT, s.lastCompactionAgo !== null ? `last ${dur(s.lastCompactionAgo)} ago` : undefined, 'Times this conversation was summarised to free room.') : null,
         g && g.l5.turns >= 2 ? metric('ch-5', 'Last 5 turns', signed(g.l5.sum)) : null,
         g && g.l10.turns > (g?.l5.turns ?? 0) ? metric('ch-10', 'Last 10 turns', signed(g.l10.sum)) : null,
-        g && g.l10.turns >= 2 ? metric('ch-g', 'Avg growth', `${signed(g.avg)}/turn`, TEXT, [g.pace, g.direction].filter(Boolean).join(', ')) : null,
+        g && g.l10.turns >= 2 ? metric('ch-g', 'Avg growth', `${signed(g.avg)}/turn`, TEXT, [g.pace, g.direction].filter(Boolean).join(', '), 'How much the context grows per turn, on average over the last 10 turns.') : null,
       ]))
       if (g?.l10.broken) out.push(note1('ch-b', 'A compaction inside the last 10 turns is left out of growth.'))
       if (v.ctx.isNearLimit) out.push(note1('ch-w', "Within 10% of the model's context window: auto-compaction may run soon.", WARM))
@@ -350,15 +369,15 @@ export const paneTree = (ui: El, a: Agg | null, v: View, pv: PaneView, st: Setti
     const c = v.cache
     if (c) {
       const hue = c.mode === 'warm' ? WARM : COLD
-      out.push(section('h-ca', 'CACHE', 'inferred from request timing'))
+      out.push(section('h-ca', 'CACHE', 'inferred from request timing', { help: "The prompt cache is taken as warm for 60 minutes after a model's last request (each model has its own). Claude does not report it; Lucelis works it out from timing." }))
       out.push(<Box key="ca-chip" flexDirection="row"><Text backgroundColor={hue} color={INK} bold>{` ${c.mode === 'warm' ? 'WARM' : 'COLD'} `}</Text><Text color={hue}>{c.mode === 'warm' ? `  cold in ~${c.minsLeft}m` : `  idle ${dur(c.idleMs)}`}</Text></Box>)
       out.push(grid('ca', [
         metric('ca-k', c.cached !== null ? 'Cached' : 'Context', tok(c.cached ?? c.resend)),
-        c.reusable !== null ? metric('ca-r', 'Reusable next time', pct(c.reusable)) : null,
-        c.lastTurnHit !== null ? metric('ca-l', 'Last turn cached', pct(c.lastTurnHit)) : null,
-        c.sessionHit !== null ? metric('ca-s', 'Session cached', pct(c.sessionHit)) : null,
+        c.reusable !== null ? metric('ca-r', 'Reusable next time', pct(c.reusable), TEXT, undefined, 'Share of this context the next request can read from the cache, if it is still warm.') : null,
+        c.lastTurnHit !== null ? metric('ca-l', 'Last turn cached', pct(c.lastTurnHit), TEXT, undefined, "Share of the last request's input that came from the cache.") : null,
+        c.sessionHit !== null ? metric('ca-s', 'Session cached', pct(c.sessionHit), TEXT, undefined, "Share of this session's input that came from the cache.") : null,
       ]))
-      out.push(note1('ca-n', "The cache is taken as warm for 60 minutes after a model's last request (each model has its own). Claude does not report it."))
+      out.push(aside('ca-n', "The cache is taken as warm for 60 minutes after a model's last request (each model has its own). Claude does not report it."))
     }
     if (v.costs && v.cache) out.push(...costTable(ui, v, cols, 'ses'))
     const t = v.today
@@ -370,12 +389,12 @@ export const paneTree = (ui: El, a: Agg | null, v: View, pv: PaneView, st: Setti
         t?.project ? metric('pt-t', 'Project today', tok(t.project.tokens), TEXT, t.project.share !== null ? `${pct(t.project.share)} of today` : undefined) : null,
         t?.project ? metric('pt-s', 'Today sess / msgs', `${t.project.sessions} / ${t.project.messages}`) : null,
         w?.project ? metric('pt-w', 'Last 7 days', tok(w.project.tokens), TEXT, w.project.change !== null ? trend(w.project.change) : undefined) : null,
-        w?.share30 !== null && w?.share30 !== undefined ? metric('pt-3', '30-day share', pct(w.share30)) : null,
-        r ? metric('pt-r', 'vs usual session', `${tok(r.tokens[0])} vs ${tok(r.tokens[1])}`, TEXT, r.tokens[1] > 0 ? `${(r.tokens[0] / r.tokens[1]).toFixed(1)}×` : undefined) : null,
+        w?.share30 !== null && w?.share30 !== undefined ? metric('pt-3', '30-day share', pct(w.share30), TEXT, undefined, "This project's share of all your activity tokens in the last 30 days.") : null,
+        r ? metric('pt-r', 'vs usual session', `${tok(r.tokens[0])} vs ${tok(r.tokens[1])}`, TEXT, r.tokens[1] > 0 ? `${(r.tokens[0] / r.tokens[1]).toFixed(1)}×` : undefined, `This session against the usual one here: the median of this project's ${r.n} earlier sessions.`) : null,
         r && r.active[1] > 0 ? metric('pt-a', 'Active vs usual', `${dur(r.active[0])} vs ${dur(r.active[1])}`) : null,
         r ? metric('pt-m', 'Msgs vs usual', `${r.messages[0]} vs ${Math.round(r.messages[1])}`) : null,
       ]))
-      if (r) out.push(note1('pt-n', `"Usual" is the median of this project's ${r.n} earlier sessions.`))
+      if (r) out.push(aside('pt-n', `"Usual" is the median of this project's ${r.n} earlier sessions.`))
       if (v.modelMix?.rows.length) out.push(note1('pt-mx', `30 days by model: ${v.modelMix.rows.map(x => `${modelName(x.model)} ${Math.round(x.share)}%`).join(' · ')}`))
     }
   }
@@ -401,7 +420,7 @@ export const paneTree = (ui: El, a: Agg | null, v: View, pv: PaneView, st: Setti
         metric('pd-m', 'Messages', String(ps.all.messages)),
         metric('pd-a', 'Tokens / session', `${tok(mean(toks))} avg`, TEXT, `${tok(median(toks))} median`),
         metric('pd-b', 'Msgs / session', `${Math.round(mean(msgs))} avg`, TEXT, `${Math.round(median(msgs))} median`),
-        longest ? metric('pd-l', 'Longest (active est.)', dur(longest.s.act), TEXT, (longest.s.title || longest.sid.slice(0, 8)).slice(0, 24)) : null,
+        longest ? metric('pd-l', 'Longest (active est.)', dur(longest.s.act), TEXT, (longest.s.title || longest.sid.slice(0, 8)).slice(0, 24), 'Time spent working: the gaps under 30 minutes between events, added up. Long breaks are left out.') : null,
         topM ? metric('pd-tm', 'Top model', modelName(topM[0])) : null,
         busiest ? metric('pd-bd', 'Busiest day', busiest[0], TEXT, DAYS[weekday(busiest[0])]) : null,
       ]))
@@ -416,7 +435,7 @@ export const paneTree = (ui: El, a: Agg | null, v: View, pv: PaneView, st: Setti
         )
       }
     } else {
-      out.push(section('h-pr', `PROJECTS · ${PERIOD_LABEL[period]}`, 'ranked by activity tokens', { period: true }))
+      out.push(section('h-pr', `PROJECTS · ${PERIOD_LABEL[period]}`, 'ranked by activity tokens', { period: true, help: 'Share and trend use activity tokens. Select a project for its own breakdown. Names come from your aliases, git repositories or folders (Settings, Project names).' }))
       const rows = [...cur.byProject.entries()].sort((x, y) => y[1].tokens - x[1].tokens)
       const wide = cols >= 70
       if (wide) {
@@ -455,7 +474,7 @@ export const paneTree = (ui: El, a: Agg | null, v: View, pv: PaneView, st: Setti
           )
         }
       }
-      out.push(note1('pr-n', 'Share and trend use activity tokens. Select a project for its details. Project names come from aliases, git roots or folders (see Settings).'))
+      out.push(aside('pr-n', 'Share and trend use activity tokens. Select a project for its details. Project names come from aliases, git roots or folders (see Settings).'))
     }
   }
 
@@ -482,7 +501,7 @@ export const paneTree = (ui: El, a: Agg | null, v: View, pv: PaneView, st: Setti
       )
     }
     if (by === 'sessions') out.push(note1('md-n', 'A session that used two models counts for both.'))
-    out.push(section('h-mc', 'CACHE USE BY MODEL'))
+    out.push(section('h-mc', 'CACHE USE BY MODEL', undefined, { help: 'Writes: input stored in the cache. Reads: input read back from it. From cache: reads as a share of all input the model received in the period.' }))
     const W = [12, 9, 9, 9]
     out.push(<Box key="mc-h" flexDirection="row">{['Model', 'Writes', 'Reads', 'From cache'].map((t, i) => cell(`mch${i}`, t, W[i], MUTED, true))}</Box>)
     for (const r of rows) {
@@ -496,13 +515,13 @@ export const paneTree = (ui: El, a: Agg | null, v: View, pv: PaneView, st: Setti
         </Box>,
       )
     }
-    out.push(note1('mc-n', 'From cache = cache reads as a share of all input the model received in the period.'))
+    out.push(aside('mc-n', 'From cache = cache reads as a share of all input the model received in the period.'))
   }
 
   // ---------------------------------------------------------------- Patterns
   if (pv.tab === 'patterns') {
     const by = pv.heat ?? st.heat
-    out.push(section('h-hm', 'ACTIVITY HEATMAP', 'one square per day, darker is more', { period: true }))
+    out.push(section('h-hm', 'ACTIVITY HEATMAP', 'one square per day, darker is more', { period: true, help: 'Each square is one day; darker means more of the metric chosen below. Point at a square to see its date and value.' }))
     out.push(row('hm-m', [<Text key="l" color={MUTED}>Metric</Text>, ...(['tokens', 'sessions', 'messages'] as const).map(m => choice(`hm-${m}`, m, by === m, () => act.setView(x => ({ ...x, heat: m }))))]))
     const all = q(addDays(today, -370), today)
     if (Svg) {
@@ -522,7 +541,7 @@ export const paneTree = (ui: El, a: Agg | null, v: View, pv: PaneView, st: Setti
     ]))
     const pt = patterns(a, rg.from, rg.to, 'messages')
     const tt = patterns(a, rg.from, rg.to, 'tokens')
-    out.push(section('h-tp', `TIME PATTERNS · ${PERIOD_LABEL[period]}`, 'local time'))
+    out.push(section('h-tp', `TIME PATTERNS · ${PERIOD_LABEL[period]}`, 'local time', { help: 'When you use Claude, by hour and by weekday, in your local time. Hours and weekdays count messages.' }))
     const hourLabels = pt.hours.map((_, h) => String(h).padStart(2, '0'))
     if (Svg) {
       const hs = histSvg(pt.hours, hourLabels, i => i % 6 === 0, Math.min(cols * 7, 480), 'messages')
@@ -548,17 +567,17 @@ export const paneTree = (ui: El, a: Agg | null, v: View, pv: PaneView, st: Setti
       const wmx = Math.max(1, ...pt.week)
       for (const [i, n] of pt.week.entries()) out.push(<Box key={`tp-w${i}`} flexDirection="row"><Box width={5} flexShrink={0}><Text color={MUTED}>{DAYS[i]}</Text></Box><Text color={ORANGE}>{'▮'.repeat(Math.max(n ? 1 : 0, Math.round((n / wmx) * 10)))}</Text></Box>)
     }
-    out.push(note1('tp-x', 'Hours and weekdays count messages.'))
+    out.push(aside('tp-x', 'Hours and weekdays count messages.'))
     out.push(section('h-sp', 'SESSION PATTERNS'))
     const ss = sessionsOf(cur).map(([sid, x]) => ({ sid, x, s: a.sess[sid] })).filter(r => r.s)
     const acts = ss.map(r => r.s.act).filter(x => x > 0)
     const toks = ss.map(r => r.x.tokens)
     const msgs = ss.map(r => r.x.messages)
     out.push(grid('sp', [
-      acts.length ? metric('sp-a', 'Active / session', dur(median(acts)), TEXT, `median · avg ${dur(mean(acts))}`) : null,
+      acts.length ? metric('sp-a', 'Active / session', dur(median(acts)), TEXT, `median · avg ${dur(mean(acts))}`, 'Time spent working: the gaps under 30 minutes between events, added up. Long breaks are left out.') : null,
       metric('sp-t', 'Tokens / session', tok(median(toks)), TEXT, `median · avg ${tok(mean(toks))}`),
       metric('sp-m', 'Msgs / session', String(Math.round(median(msgs))), TEXT, `median · avg ${Math.round(mean(msgs))}`),
-      metric('sp-b', 'Sessions >100K', String(toks.filter(x => x > 100_000).length)),
+      metric('sp-b', 'Sessions >100K', String(toks.filter(x => x > 100_000).length), TEXT, undefined, 'Sessions with more than 100K activity tokens in the period.'),
     ]))
     const longest = [...ss].sort((x, y) => y.x.tokens - x.x.tokens).slice(0, 5)
     if (longest.length) out.push(note1('sp-h', 'Largest sessions in the period:'))
@@ -578,22 +597,13 @@ export const paneTree = (ui: El, a: Agg | null, v: View, pv: PaneView, st: Setti
   // line on what it is for, and space above it; each control a line saying what it does.
   if (pv.tab === 'settings') {
     const group = (key: string, title: string, sub: string) => section(key, title, sub, { gap: 2 })
-    // A setting: its title, its choices, and what it does. In the desktop app what it does is a
-    // small card that opens above the title while the pointer is on it (the ⓘ says so); the
-    // card sits above because a placed box covers what comes before it, not what follows.
-    // Elsewhere (no pointer) it is a line under the setting.
-    const CARD_W = Math.max(24, Math.min(56, cols - 4))
+    // A setting: its title, its choices, and what it does: behind the ⓘ in the desktop app
+    // (`info`), a line under the setting elsewhere.
     const setting = (key: string, label: string, choices: any[], what: string) => act.hover ? (
       <Box key={key} flexDirection="column" marginBottom={1}>
         {row(`${key}-r`, [
-          <Box key="lw" width={20} flexShrink={0}>
-            <Box key={`${key}-t`} flexDirection="row">
-              <Text bold>{label}</Text><Text color={MUTED}> ⓘ</Text>
-              <Box position="absolute" bottom={1} left={0} width={CARD_W} display="none" hover={{ display: 'flex' }}
-                borderStyle="round" borderColor={LINE} backgroundColor={CARD_BG} paddingX={1}>
-                <Text color={CARD_TEXT}>{what}</Text>
-              </Box>
-            </Box>
+          <Box key="lw" width={20} flexShrink={0} flexDirection="row">
+            <Text bold>{label}</Text>{info(key, what, label.length)}
           </Box>, ...choices])}
       </Box>
     ) : (
@@ -772,7 +782,7 @@ export const paneTree = (ui: El, a: Agg | null, v: View, pv: PaneView, st: Setti
     const wide = width >= 46
     const W = wide ? [13, 9, 9, 9] : [12, 8, 8]
     const head = wide ? ['Model', 'Now', 'If cold', 'Saves'] : ['Model', 'Now', 'If cold']
-    const items: any[] = [section(`h-nm-${k}`, 'NEXT MESSAGE', 'API-price equivalent estimate, not your bill')]
+    const items: any[] = [section(`h-nm-${k}`, 'NEXT MESSAGE', 'API-price equivalent estimate, not your bill', { help: 'What sending your next prompt would cost at API prices, on each model: now (cache warm) and if the cache had gone cold. Each model has its own cache, so switching starts cold. Not your bill: a subscription is not charged per message.' })]
     items.push(<B key={`nm-h-${k}`} flexDirection="row">{head.map((t, i) => cell(`nmh${k}${i}`, t, W[i], MUTED, true))}</B>)
     for (const r of rows2 as CostRow[]) {
         if (r.isUnpriced) {
