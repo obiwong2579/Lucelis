@@ -35,6 +35,8 @@ type Act = {
   dismissNews?: () => void
   copyNotes?: () => void
   notesCopied?: boolean
+  /** The surface has a pointer (desktop app): descriptions open on hover instead of taking a line each. */
+  hover?: boolean
 }
 
 /** Shown by the "? Terms" toggle: what the figures mean and how sure they are. */
@@ -166,6 +168,9 @@ export const histSvg = (vals: number[], labels: string[], tick: (i: number) => b
 const TEXT = undefined as unknown as string
 /** Empty chart cells: a translucent grey that reads on a light and on a dark background. */
 const CHART_EMPTY = 'rgba(134,149,163,0.28)'
+/** Hover cards: dark with light text, readable on a light or a dark app theme (as tooltips usually are). */
+const CARD_BG = '#1f2733'
+const CARD_TEXT = '#e8e6e1'
 
 export const paneTree = (ui: El, a: Agg | null, v: View, pv: PaneView, st: Settings, note: string, columns: number, now: number, bandColumns: number | null, act: Act) => {
   const { Box, Text, Button } = ui
@@ -573,7 +578,25 @@ export const paneTree = (ui: El, a: Agg | null, v: View, pv: PaneView, st: Setti
   // line on what it is for, and space above it; each control a line saying what it does.
   if (pv.tab === 'settings') {
     const group = (key: string, title: string, sub: string) => section(key, title, sub, { gap: 2 })
-    const setting = (key: string, label: string, choices: any[], what: string) => (
+    // A setting: its title, its choices, and what it does. In the desktop app what it does is a
+    // small card that opens above the title while the pointer is on it (the ⓘ says so); the
+    // card sits above because a placed box covers what comes before it, not what follows.
+    // Elsewhere (no pointer) it is a line under the setting.
+    const CARD_W = Math.max(24, Math.min(56, cols - 4))
+    const setting = (key: string, label: string, choices: any[], what: string) => act.hover ? (
+      <Box key={key} flexDirection="column" marginBottom={1}>
+        {row(`${key}-r`, [
+          <Box key="lw" width={20} flexShrink={0}>
+            <Box key={`${key}-t`} flexDirection="row">
+              <Text bold>{label}</Text><Text color={MUTED}> ⓘ</Text>
+              <Box position="absolute" bottom={1} left={0} width={CARD_W} display="none" hover={{ display: 'flex' }}
+                borderStyle="round" borderColor={LINE} backgroundColor={CARD_BG} paddingX={1}>
+                <Text color={CARD_TEXT}>{what}</Text>
+              </Box>
+            </Box>
+          </Box>, ...choices])}
+      </Box>
+    ) : (
       <Box key={key} flexDirection="column" marginBottom={1}>
         {row(`${key}-r`, [<Box key="lw" width={20} flexShrink={0}><Text bold>{label}</Text></Box>, ...choices])}
         <Text key="w" color={MUTED}>{what}</Text>
@@ -698,7 +721,7 @@ export const paneTree = (ui: El, a: Agg | null, v: View, pv: PaneView, st: Setti
     if (Input) {
       out.push(<Input key="export-dir" label="Export folder" value={st.exportDir ?? ''} placeholder="C:\Users\you\Documents" submitLabel="Set" onSubmit={(text: string) => act.setSettings(x => ({ ...x, exportDir: text.trim().replace(/[\\/]+$/, '') }))} />)
     }
-    out.push(<Box key="st-svb" marginTop={2}>{note1('st-sv', 'Settings are saved at once and kept across sessions. Version and updates: About Lucelis, at the bottom of Overview.')}</Box>)
+    out.push(<Box key="st-svb" marginTop={2}>{note1('st-sv', `Settings are saved at once and kept across sessions.${act.hover ? ' Point at a title with ⓘ to see what it does.' : ''} Version and updates: About Lucelis, at the bottom of Overview.`)}</Box>)
   }
 
   if (pv.tab !== 'settings' && note) out.push(<Box key="foot" marginTop={1}><Text color={MUTED}>{`History: ${note}`}</Text></Box>)

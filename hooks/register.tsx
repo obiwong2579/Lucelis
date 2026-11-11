@@ -486,6 +486,7 @@ export const register: Register = on => {
         await update($, rev, r => r + 1)
       })() },
       notesCopied,
+      hover: e.surface === 'desktop',
     })
   })
 

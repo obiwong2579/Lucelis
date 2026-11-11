@@ -260,3 +260,24 @@ test('Settings: groups in order, each warning is one choice per quota, updates l
   expect(JSON.stringify(await pane.find({}))).toContain('named from:')
   await pane.unmount()
 })
+
+test('Settings descriptions: a hover card behind an ⓘ in the desktop app, a plain line in the terminal', async ($, on) => {
+  await boot($, on, { history: true })
+  const WHAT = 'Turns the whole Lucelis bar above the prompt on or off.'
+  const desk = await $.ui.mount({ plugin: 'lucelis', surface: 'desktop', component: 'Pane', requestId: 'lucelis', props: { bodyColumns: 100 } })
+  await desk.press({ key: 'tab-settings' })
+  const title = JSON.stringify(await desk.find({ key: 'st1-t' }))
+  // The title is the hover area; inside it an unkeyed card, hidden until the pointer is on the title.
+  expect(title).toContain('ⓘ')
+  expect(title).toContain(WHAT)
+  expect(title).toContain('"display":"none"')
+  expect(title).toContain('"hover":{"display":"flex"}')
+  expect(title).toContain('"position":"absolute"')
+  expect(await desk.find({ text: WHAT })).toBeDefined()
+  await desk.unmount()
+  const term = await $.ui.mount({ plugin: 'lucelis', surface: 'terminal', component: 'Pane', requestId: 'lucelis', props: { bodyColumns: 100 } })
+  await term.press({ key: 'tab-settings' })
+  expect(JSON.stringify(await term.find({ key: 'st1-r' }))).not.toContain('ⓘ')
+  expect(await term.find({ text: WHAT })).toBeDefined()
+  await term.unmount()
+})
