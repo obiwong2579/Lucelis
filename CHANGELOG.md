@@ -2,16 +2,17 @@
 
 ## 1.1.0 — 2026-11-11
 
-- **Low-quota warning.** When what is left of the 5-hour or 7-day quota drops to your level (30% by default; 10, 20, 30 or 40% offered), Lucelis tells you once per quota window with a short pop-up, and optionally a Windows notification and a "quota is back" notification at the reset time. Only one open session warns. Settings: on/off, level per quota, pop-up, notification.
+- **Low-quota warning.** One choice per quota, 5H and 7D: Off, 10, 20, 30 or 40% left (30% by default). At or under it, that figure and the logo turn red and Lucelis shows one short pop-up for that quota window. Only one open session shows it.
 - **Logo.** The mark now has three bars, shortest at the top, and a slightly larger glint set a little higher, so it reads at 16 px. While Claude works, the bars draw in one after the other (replacing the breathing glint). While a quota is at or under its warning level, the bars and the glint are red. Still otherwise.
 - **One low level.** The 5H and 7D figures on the bar now turn red at the same level as the logo and the warning (was: under 30%), so they never disagree. Green from 70%, yellow between.
 - **This week** on the Overview tab: this week so far against the same days of last week, with busiest day, top project and top model.
 - **Export CSV** in Settings: one row per day, project and model with token counts, for the period shown.
-- **Check for updates** in Settings: the one network request Lucelis makes, only when pressed. A newer version gets its two update commands copied for you to paste; nothing is installed automatically.
-- **What's new.** After an update, one quiet line at the top of Overview names the main changes, from the notes shipped with the plugin. Full notes copies the link; Dismiss hides it. Never a pop-up.
+- **Check for updates** under About Lucelis, at the bottom of Overview: the one network request Lucelis makes, only when pressed. A newer version gets its two update commands copied for you to paste; nothing is installed automatically.
+- **What's new.** After an update, About Lucelis names the main changes, from the notes shipped with the plugin. Full notes copies the link; Dismiss hides it. Never a pop-up.
 - **Last seen.** After a restart, the last 5H and 7D figures show dimmed and marked "last seen" until the first reply, while their window lasts. Never coloured or warned about.
 - **Tight bar.** On a narrow window the bar shortens its items (no % signs, then one-letter labels) before it leaves out 5H, 7D, cache or context.
 - **Format guard.** If many replies in your history are in a shape Lucelis does not recognise, the pane says totals may be low, instead of showing them as if complete.
+- **Pane layout.** The pane title shows the version. The period choice sits under the heading it changes. Overview ends with This session and About Lucelis (version, updates, what is new, licence). Settings is grouped (appearance, bar items, low-quota warning, dashboard, project names, history data) with a line on what each group and control does; the detected project folders are folded away until asked for.
 - README and plugin description updated for the update check.
 
 ## 1.0.2 — 2026-11-10

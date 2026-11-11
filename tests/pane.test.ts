@@ -99,7 +99,7 @@ test('every pane tab draws from a cached history on desktop and terminal', async
       expect(await ui.find({ text: 'SESSION PATTERNS' })).toBeDefined()
       await ui.press({ key: 'tab-settings' })
       expect(await ui.find({ key: 'rebuild' })).toBeDefined()
-      expect(await ui.find({ text: 'DETECTED PROJECTS' })).toBeDefined()
+      expect(await ui.find({ text: 'PROJECT NAMES' })).toBeDefined()
       expect(await variant('st-normal')).toBe('primary')
       // Terms help explains the token metrics and the inferred cache clock.
       await ui.press({ key: 'help' })

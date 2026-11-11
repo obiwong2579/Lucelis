@@ -25,23 +25,23 @@ export const DEFAULT_LEVEL = 30
 /** The levels Settings offers. */
 export const LEVELS = [10, 20, 30, 40] as const
 
-/** The warning level for a window kind, or null for a kind that is not warned about. */
+/** The warning level for a window kind (0: off), or null for a kind that is not warned about. */
 export const levelFor = (kind: string, warn?: Settings['warn']): number | null => {
   const k = LEVEL[kind]
   return k ? (warn?.[k] ?? DEFAULT_LEVEL) : null
 }
 
 /** Whether any window is at or under its warning level now (the logo's red glint). The level
- * colours the bar whether or not the pop-up is on; on/off governs only the pop-up. */
+ * is set per quota; 0 turns that quota's red and pop-up off. */
 export const isLow = (windows: readonly Window[], warn?: Settings['warn']): boolean =>
-  windows.some(w => { const l = levelFor(w.kind, warn); return l !== null && leftOf(w) <= l })
+  windows.some(w => { const l = levelFor(w.kind, warn); return !!l && leftOf(w) <= l })
 
 /** Claims kept: window id -> who claimed it and when. */
 export type Warned = Record<string, { by: string; at: number }>
 
 /** The windows to warn about now: at or under their level, and not warned about yet. */
 export const due = (windows: readonly Window[], warn: Settings['warn'], warned: Warned): Window[] =>
-  warn.on ? windows.filter(w => { const l = levelFor(w.kind, warn); return l !== null && leftOf(w) <= l && !warned[windowId(w)] }) : []
+  windows.filter(w => { const l = levelFor(w.kind, warn); return !!l && !w.stale && leftOf(w) <= l && !warned[windowId(w)] })
 
 /** Drops claims for windows that have reset, so the file stays small. */
 export const prune = (warned: Warned, now: number): Warned => {

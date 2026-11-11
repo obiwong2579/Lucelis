@@ -41,11 +41,10 @@ export type Settings = {
   /** Project root -> display name, for when automatic detection is ambiguous. */
   aliases: { path: string; name: string }[]
   /**
-   * Low-quota warning (1.1.0): warn once per window when what is LEFT of 5H / 7D is at or
-   * under its level. `toast`: the app's pop-up; `notify`: a Windows notification;
-   * `back`: with `notify`, a notification booked for the reset time.
+   * Low-quota level per quota, % left (1.1.0); 0 = off. At or under it the figure and the
+   * logo turn red and one pop-up is shown per quota window.
    */
-  warn: { on: boolean; h5: number; d7: number; toast: boolean; notify: boolean; back: boolean }
+  warn: { h5: number; d7: number }
   /** Where CSV exports go; empty: the Documents folder. */
   exportDir: string
 }
@@ -59,9 +58,11 @@ export type PaneView = {
   tab: 'overview' | 'session' | 'projects' | 'models' | 'patterns' | 'settings'
   /** Show the help text on token terms and the cache clock. */
   help: boolean
+  /** Settings: the list of detected project folders is open. */
+  folders?: boolean
 }
 
-/** Where a Check for updates stands (Settings tab). */
+/** Where a Check for updates stands (About Lucelis, on Overview). */
 export type UpdateState = { phase: 'idle' | 'checking' | 'latest' | 'newer' | 'failed' | 'copied'; installed: string; latest?: string; detail?: string }
 
 /** The quiet "Updated to X" line on Overview after an update: one session, until dismissed. */

@@ -35,7 +35,7 @@ Lucelis has three levels. Each one opens the next.
 
 - **Health colours.** The 5H and 7D figures are green with 70% or more left, red at or under your low level (30% by default, set in Settings), and yellow between. Context is green from 70% left, yellow from 30%, red below.
 - **The Lucelis mark** leads the bar in the desktop app: a rounded L with three bars and a glint. The bars draw in, top to bottom, while Claude is working on a reply, and it is still otherwise. The bars and the glint turn red while a quota is at or under your warning level.
-- **Low-quota warning.** When what is left of the 5-hour or 7-day quota drops to your level (30% by default), its figure on the bar and the logo turn red, and Lucelis tells you once for that quota window: a short pop-up in the app, and a Windows notification if you turn that on. With several sessions open, only one of them warns.
+- **Low-quota warning.** When what is left of the 5-hour or 7-day quota drops to your level (30% by default), its figure on the bar and the logo turn red, and Lucelis shows one short pop-up in the app for that quota window. With several sessions open, only one of them shows it.
 - **One or two lines.** On a wide window everything sits on one row; on a narrow one, items that do not fit move to a second row.
 - **Tight on a narrow window.** Before 5H, 7D, cache or context would be left out, the row gets shorter instead: `5H 76 7D 52 WARM CTX 41` (no % signs or separators; the colours keep their meaning), then `5H 76 7D 52 W C 41`. Reset times and cache minutes are then in More. 5H and 7D are never left out.
 - **Last seen after a restart.** Until a new session's first reply, the bar shows the last 5H and 7D figures from an earlier session, dimmed and marked *last seen*, while their window has not reset. They are never coloured or warned about, and the live figures replace them on the first reply.
@@ -60,16 +60,16 @@ A pane beside the chat, built from your own local history:
 
 | Tab | Shows |
 |---|---|
-| Overview | Activity tokens, sessions and messages for the period, trend against the previous period, top project and model, this week against the same days of last week, daily activity. |
+| Overview | Activity tokens, sessions and messages for the period, trend against the previous period, top project and model, this week against the same days of last week, daily activity, this session, and **About Lucelis** (version, Check for updates, what is new). |
 | Session | The current session in full: tokens by kind, context, cache state and reuse, this project today. |
 | Projects | Every project with its share, sessions, messages and trend; open one for its own breakdown. |
 | Models | Next-message cost comparison across models, then usage per model. |
 | Patterns | Activity heatmap, peak hours and weekdays, time-of-day split. |
-| Settings | Everything below, plus cache status, a manual refresh, CSV export and Check for updates. |
+| Settings | Everything below, grouped: appearance, bar items, low-quota warning, dashboard defaults, project names, history data and CSV export. |
 
 **? Terms** in the pane explains every figure. Periods: today, 7 days, 30 days, 90 days, 1 year, all.
 
-After an update, the first session shows one quiet line at the top of Overview, *Updated to X.Y.Z*, with the main changes from the notes that ship with the plugin. **Full notes** copies the link to this changelog; **Dismiss** hides it. A first install shows nothing.
+The period choice sits under the heading of the part of the tab it changes. After an update, the first session shows *New in X.Y.Z* under About Lucelis, at the bottom of Overview, with the main changes from the notes that ship with the plugin. **Full notes** copies the link to this changelog; **Dismiss** hides it. A first install shows nothing.
 
 If many replies in your history are in a shape Lucelis does not recognise (a change in Claude Code's transcript format), the pane says so at the bottom: *Some history could not be read; Claude Code's format may have changed. Totals may be low.*
 
@@ -148,13 +148,13 @@ Only one plugin can draw the row above the prompt. If you also run another one t
 - **Display mode.** Minimal: the two quotas. Normal: one row with everything that fits. Detailed: always two rows.
 - **Wrap to a second row.** In Normal mode, items that do not fit the first row move to a second one. On a wide window the bar stays one row.
 - **Lucelis logo.** The logo at the start of the bar. On by default.
-- **Low-quota warning.** On by default. Low level for 5H and 7D (10, 20, 30 or 40% left; 30% by default): at or under it the figure and the logo are red. The warning on/off governs only the in-app pop-up (on), a Windows notification (off), and with notifications on, a "quota is back" notification booked for the reset time (off).
+- **Low-quota warning.** One choice per quota, for 5H and 7D: Off, 10, 20, 30 or 40% left (30% by default). At or under it, that figure and the logo are red and one pop-up is shown per quota window. Off: never red, no pop-up.
 - **Bar background.** Off by default: the bar uses the app's own background and text colour, in light and dark themes. On puts a navy fill behind the bar items.
 - **Compact bar items.** One toggle per item, listed in priority order. Each shows its state: shown, off, hidden by Minimal, no room at this width, or no data yet.
 - **Dashboard.** Default period and heatmap metric.
 - **Project aliases.** `C:\path\to\folder => Name` maps a folder and everything under it to one project. An alias named like an existing project joins it.
 - **Export.** **Export CSV** saves one row per day, project and model (token counts, responses, sessions; no conversation text) for the period shown, to your Documents folder or a folder you set. It opens in Excel.
-- **Updates.** **Check for updates** asks GitHub for the latest version number, only when you press it. If a newer one is out, **Copy update commands** puts the two update commands on your clipboard to paste into the prompt; Lucelis never installs anything itself.
+- **Updates.** Under About Lucelis at the bottom of Overview, **Check for updates** asks GitHub for the latest version number, only when you press it. If a newer one is out, **Copy update commands** puts the two update commands on your clipboard to paste into the prompt; Lucelis never installs anything itself.
 
 A good everyday setup: Normal, Wrap to a second row on, and 5H, 7D, Cache, Context and Reset times on. Add the rest to taste.
 
@@ -179,7 +179,7 @@ They cover the input side only and exclude your new message and all output. Pric
 
 **Local-only • No telemetry • No model calls • Network only when you press Check for updates**
 
-Lucelis calls no model and has no telemetry. It makes no network request on its own. The one exception is the **Check for updates** button in Settings: only when you press it, Lucelis downloads the public file `https://raw.githubusercontent.com/obiwong2579/Lucelis/main/.claude-plugin/plugin.json` to read the latest version number. Nothing about you or your usage is sent.
+Lucelis calls no model and has no telemetry. It makes no network request on its own. The one exception is the **Check for updates** button (About Lucelis, at the bottom of Overview): only when you press it, Lucelis downloads the public file `https://raw.githubusercontent.com/obiwong2579/Lucelis/main/.claude-plugin/plugin.json` to read the latest version number. Nothing about you or your usage is sent.
 
 | It reads | Why |
 |---|---|
@@ -204,7 +204,7 @@ It never modifies a transcript. To remove everything it stored, delete `~/.claud
 
 ## Update
 
-- **Installed from GitHub:** Settings → **Check for updates**, or type `/plugin marketplace update lucelis` and then `/plugin update lucelis@lucelis` into the prompt; then start a new session.
+- **Installed from GitHub:** Overview → About Lucelis → **Check for updates**, or type `/plugin marketplace update lucelis` and then `/plugin update lucelis@lucelis` into the prompt; then start a new session.
 - **Installed from a folder:** replace the folder's files with the new version and start a new session (or run `/reload-plugins`). Claude Code reads a folder marketplace in place.
 
 Settings and the cache carry over. A new parser version rebuilds the cache by itself.

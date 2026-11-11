@@ -23,9 +23,9 @@ export const RED = '#ef5d58'
 /** Health colour of a "what is left" percentage: green 70-100, yellow 30 to under 70, red under 30. */
 export const health = (left: number): string => (left >= 70 ? GOOD : left >= 30 ? YELLOW : RED)
 
-/** Colour of a quota figure: red at or under the warning level (the same level the logo and the
+/** Colour of a quota figure (level 0: warning off, never red): red at or under the warning level (the same level the logo and the
  * warning use, so they never disagree), green from 70%, yellow between. */
-export const quotaHealth = (left: number, level: number): string => (left <= level ? RED : left >= 70 ? GOOD : YELLOW)
+export const quotaHealth = (left: number, level: number): string => (level > 0 && left <= level ? RED : left >= 70 ? GOOD : YELLOW)
 
 const SVG_OPEN = '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">'
 const L_PATH = '<path d="M7 5.5 V23.1 Q7 25.5 9.6 25.5 H23.5" fill="none" stroke="#F5EFE4" stroke-width="4.6" stroke-linecap="round" stroke-linejoin="round"/>'

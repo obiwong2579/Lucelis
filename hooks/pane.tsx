@@ -34,6 +34,7 @@ type Act = {
   news?: News | null
   dismissNews?: () => void
   copyNotes?: () => void
+  notesCopied?: boolean
 }
 
 /** Shown by the "? Terms" toggle: what the figures mean and how sure they are. */
@@ -184,11 +185,13 @@ export const paneTree = (ui: El, a: Agg | null, v: View, pv: PaneView, st: Setti
   const rule = '─'.repeat(Math.max(8, Math.min(Math.floor((cols - 2) * 0.7), 90)))
   /** A subtitle as a sentence: capital first letter, full stop. */
   const sentence = (t: string) => { const x = t.trim(); const y = x ? x[0].toUpperCase() + x.slice(1) : x; return /[.!?:]$/.test(y) ? y : y + '.' }
-  const section = (key: string, title: string, sub?: string) => (
-    <Box key={key} flexDirection="column" marginTop={1}>
+  /** `period`: the period choice sits under this heading (the part of the tab it changes). `gap`: lines above. */
+  const section = (key: string, title: string, sub?: string, o: { period?: boolean; gap?: number } = {}) => (
+    <Box key={key} flexDirection="column" marginTop={o.gap ?? 1}>
       <Text color={TEXT} bold>{title}</Text>
       {sub ? <Text color={MUTED}>{sentence(sub)}</Text> : null}
       <Text color={LINE}>{rule}</Text>
+      {o.period && periodRow ? periodRow : null}
     </Box>
   )
   /** One metric: label over value, in a fixed-width cell of a wrapping grid. */
@@ -211,6 +214,8 @@ export const paneTree = (ui: El, a: Agg | null, v: View, pv: PaneView, st: Setti
   const cell = (k: string, t: string, w: number, c = TEXT, b = false) => <Box key={k} width={w} flexShrink={0}><Text color={c} bold={b}>{t}</Text></Box>
 
   // ---- tabs (and the help toggle)
+  /** The period choice, drawn under the heading it applies to (section's `period`). */
+  let periodRow: any = null
   const tabs = TABS.map(t => choice(`tab-${t}`, TAB_LABEL[t], pv.tab === t, () => act.setView(x => ({ ...x, tab: t, project: null }))))
   tabs.push(<Button key="help" plain dimColor={!pv.help} label={pv.help ? '? Terms ▴' : '? Terms ▾'} onPress={() => act.setView(x => ({ ...x, help: !x.help }))} />)
   out.push(row('tabs', tabs))
@@ -227,7 +232,7 @@ export const paneTree = (ui: El, a: Agg | null, v: View, pv: PaneView, st: Setti
   const rg = rangeOf(period, today, firstDay(a))
   const usesPeriod = pv.tab === 'overview' || pv.tab === 'projects' || pv.tab === 'models' || pv.tab === 'patterns'
   if (usesPeriod) {
-    out.push(row('periods', [
+    periodRow = (row('periods', [
       <Text key="pl" color={MUTED}>Period</Text>,
       ...PERIODS.map(p => choice(`p-${p}`, PERIOD_LABEL[p], p === period, () => act.setView(x => ({ ...x, period: p })))),
     ]))
@@ -246,15 +251,7 @@ export const paneTree = (ui: El, a: Agg | null, v: View, pv: PaneView, st: Setti
 
   // ---------------------------------------------------------------- Overview
   if (pv.tab === 'overview') {
-    const n = act.news
-    if (n) {
-      out.push(row('news', [
-        <Text key="t" color={MUTED}>{`Updated to ${n.version}${n.summary ? `: ${n.summary}` : ''}.`}</Text>,
-        <Button key="news-notes" plain label={n.copied ? 'Link copied' : 'Full notes'} onPress={() => act.copyNotes?.()} />,
-        <Button key="news-x" plain label="Dismiss" onPress={() => act.dismissNews?.()} />,
-      ]))
-    }
-    out.push(section('h-ov', `OVERVIEW · ${PERIOD_LABEL[period]}`, rg.prev ? `trend vs the previous ${nDays} days` : undefined))
+    out.push(section('h-ov', `OVERVIEW · ${PERIOD_LABEL[period]}`, rg.prev ? `trend vs the previous ${nDays} days` : undefined, { period: true }))
     const sk = streaks(a, today)
     const topModel = [...cur.byModel.entries()].sort((x, y) => y[1].tokens - x[1].tokens)[0]
     const topProject = [...cur.byProject.entries()].sort((x, y) => y[1].tokens - x[1].tokens)[0]
@@ -297,12 +294,13 @@ export const paneTree = (ui: El, a: Agg | null, v: View, pv: PaneView, st: Setti
       out.push(<Text key="bars-t" color={ORANGE}>{days.map(x => ' ▁▂▃▄▅▆▇█'[Math.ceil((x / mx) * 8)]).join('')}</Text>)
     }
     if (s) {
-      out.push(section('h-now', 'NOW'))
+      out.push(section('h-now', 'THIS SESSION', 'the conversation you are in now'))
       out.push(row('now', [
         <Text key="t" color={MUTED}>{`${s.project?.name ?? 'This session'} · ${s.tokens !== null ? tok(s.tokens) + ' activity tokens' : ''}${v.ctx ? ` · context ${v.ctx.percent}%` : ''}`}</Text>,
         <Button key="go-session" plain label="Session ›" onPress={() => act.setView(x => ({ ...x, tab: 'session' }))} />,
       ]))
     }
+    about()
   }
 
   // ---------------------------------------------------------------- Session
@@ -384,7 +382,7 @@ export const paneTree = (ui: El, a: Agg | null, v: View, pv: PaneView, st: Setti
       const ps = q(rg.from, rg.to, p)
       const pp = rg.prev ? q(rg.prev.from, rg.prev.to, p) : null
       out.push(<Box key="back-row" marginTop={1}><Button key="back" label="‹ All projects" variant="secondary" onPress={() => act.setView(x => ({ ...x, project: null }))} /></Box>)
-      out.push(section('h-pd', `${nameOf(p)} · ${PERIOD_LABEL[period]}`, `${resolve(p).source} · ${p}`))
+      out.push(section('h-pd', `${nameOf(p)} · ${PERIOD_LABEL[period]}`, `${resolve(p).source} · ${p}`, { period: true }))
       const ss = sessionsOf(ps).map(([sid, x]) => ({ sid, x, s: a.sess[sid] }))
       const toks = ss.map(r => r.x.tokens)
       const msgs = ss.map(r => r.x.messages)
@@ -413,7 +411,7 @@ export const paneTree = (ui: El, a: Agg | null, v: View, pv: PaneView, st: Setti
         )
       }
     } else {
-      out.push(section('h-pr', `PROJECTS · ${PERIOD_LABEL[period]}`, 'ranked by activity tokens'))
+      out.push(section('h-pr', `PROJECTS · ${PERIOD_LABEL[period]}`, 'ranked by activity tokens', { period: true }))
       const rows = [...cur.byProject.entries()].sort((x, y) => y[1].tokens - x[1].tokens)
       const wide = cols >= 70
       if (wide) {
@@ -462,7 +460,7 @@ export const paneTree = (ui: El, a: Agg | null, v: View, pv: PaneView, st: Setti
     // First on this tab: "Compare models" in the band lands here.
     if (v.costs && v.cache) out.push(...costTable(ui, v, cols, 'mod'))
     else out.push(section('h-nm-none', 'NEXT MESSAGE', 'by model'), note1('nm-none', 'No estimate yet: it needs the first reply of this session (the context size and the cache clock).'))
-    out.push(section('h-md', `MODELS · ${PERIOD_LABEL[period]}`))
+    out.push(section('h-md', `MODELS · ${PERIOD_LABEL[period]}`, undefined, { period: true }))
     out.push(row('md-m', [<Text key="l" color={MUTED}>Compare by</Text>, ...(['tokens', 'sessions', 'messages'] as const).map(m => choice(`md-${m}`, m, by === m, () => act.setView(x => ({ ...x, modelBy: m }))))]))
     const rows = [...cur.byModel.entries()].map(([m, x]) => ({ m, x, n: metricOf(x, by) })).sort((x, y) => y.n - x.n)
     const total = rows.reduce((x, y) => x + y.n, 0) || 1
@@ -499,7 +497,7 @@ export const paneTree = (ui: El, a: Agg | null, v: View, pv: PaneView, st: Setti
   // ---------------------------------------------------------------- Patterns
   if (pv.tab === 'patterns') {
     const by = pv.heat ?? st.heat
-    out.push(section('h-hm', 'ACTIVITY HEATMAP', 'one square per day, darker is more'))
+    out.push(section('h-hm', 'ACTIVITY HEATMAP', 'one square per day, darker is more', { period: true }))
     out.push(row('hm-m', [<Text key="l" color={MUTED}>Metric</Text>, ...(['tokens', 'sessions', 'messages'] as const).map(m => choice(`hm-${m}`, m, by === m, () => act.setView(x => ({ ...x, heat: m }))))]))
     const all = q(addDays(today, -370), today)
     if (Svg) {
@@ -570,63 +568,36 @@ export const paneTree = (ui: El, a: Agg | null, v: View, pv: PaneView, st: Setti
   }
 
   // ---------------------------------------------------------------- Settings
+  // Groups, in this order: how the bar looks, what it shows, the low-quota warning, how this
+  // pane opens, how projects are named, and the history data. Each group has a heading, a
+  // line on what it is for, and space above it; each control a line saying what it does.
   if (pv.tab === 'settings') {
-    out.push(section('h-st', 'APPEARANCE', 'The bar above the prompt'))
-    // One control per row, each with a line saying what it does.
+    const group = (key: string, title: string, sub: string) => section(key, title, sub, { gap: 2 })
     const setting = (key: string, label: string, choices: any[], what: string) => (
       <Box key={key} flexDirection="column" marginBottom={1}>
-        {row(`${key}-r`, [<Text key="l" bold>{label}</Text>, ...choices])}
+        {row(`${key}-r`, [<Box key="lw" width={20} flexShrink={0}><Text bold>{label}</Text></Box>, ...choices])}
         <Text key="w" color={MUTED}>{what}</Text>
       </Box>
     )
-    out.push(setting('st1', 'Show bar', [
-      choice('st-on', 'On', st.isOn, () => act.setSettings(x => ({ ...x, isOn: true }))),
-      choice('st-off', 'Off', !st.isOn, () => act.setSettings(x => ({ ...x, isOn: false }))),
-    ], "Turns the whole Lucelis bar above the prompt on or off."))
+    const onOff = (key: string, value: boolean, set: (v: boolean) => void) => [
+      choice(`${key}-on`, 'On', value, () => set(true)),
+      choice(`${key}-off`, 'Off', !value, () => set(false)),
+    ]
+
+    // ---- 1. Appearance
+    out.push(section('h-st', 'APPEARANCE', 'How the bar above the prompt looks', { gap: 1 }))
+    out.push(setting('st1', 'Show bar', onOff('st', st.isOn, v => act.setSettings(x => ({ ...x, isOn: v }))), 'Turns the whole Lucelis bar above the prompt on or off.'))
     if (!st.isOn) out.push(note1('st-offn', 'The bar is off. The row above the prompt is left to Claude Code or another plugin. Turn it on again here, or with /lucelis-settings.', WARM))
     out.push(setting('st1b', 'Display mode', (['minimal', 'normal', 'detailed'] as const).map(m => choice(`st-${m}`, m[0].toUpperCase() + m.slice(1), st.mode === m, () => act.setSettings(x => ({ ...x, mode: m })))),
-      st.mode === 'minimal' ? 'Minimal: Only the 5H and 7D quotas.'
-        : st.mode === 'normal' ? 'Normal: One row with every enabled item that fits, usage first.'
-        : 'Detailed: Always two rows. The second row holds project, session, today, elapsed, trend and model.'))
-    out.push(setting('st1c', 'Wrap to a second row', [
-      choice('wr-on', 'On', !!st.wrap, () => act.setSettings(x => ({ ...x, wrap: true }))),
-      choice('wr-off', 'Off', !st.wrap, () => act.setSettings(x => ({ ...x, wrap: false }))),
-    ], 'In Normal mode, items that do not fit on the first row move to a second row. A wide window stays on one row.'))
-    out.push(setting('st1d', 'Lucelis logo', [
-      choice('lg-on', 'On', !!st.logo, () => act.setSettings(x => ({ ...x, logo: true }))),
-      choice('lg-off', 'Off', !st.logo, () => act.setSettings(x => ({ ...x, logo: false }))),
-    ], 'Shows the Lucelis logo at the start of the bar (desktop app). Its bars draw in while Claude is working on a reply, and it turns red while a quota is low.'))
-    out.push(setting('st1e', 'Bar background', [
-      choice('bg-on', 'On', !!st.bg, () => act.setSettings(x => ({ ...x, bg: true }))),
-      choice('bg-off', 'Off', !st.bg, () => act.setSettings(x => ({ ...x, bg: false }))),
-    ], "On: A navy fill behind the bar items. Off: The bar uses the app's own background and text colour."))
-    const w = st.warn
-    const setWarn = (p: Partial<Settings['warn']>) => act.setSettings(x => ({ ...x, warn: { ...x.warn, ...p } }))
-    out.push(section('h-wn', 'LOW-QUOTA WARNING', 'Once per quota window, in one session only'))
-    for (const [k, label] of [['h5', '5H low at'], ['d7', '7D low at']] as const) {
-      out.push(row(`wn-${k}`, [<Text key="l" color={MUTED}>{label}</Text>, ...LEVELS.map(n => choice(`wn-${k}-${n}`, `${n}% left`, w[k] === n, () => setWarn({ [k]: n } as Partial<Settings['warn']>)))]))
-    }
-    out.push(setting('wn1', 'Warning', [
-      choice('wn-on', 'On', w.on, () => setWarn({ on: true })),
-      choice('wn-off', 'Off', !w.on, () => setWarn({ on: false })),
-    ], 'At or under the level above, the 5H or 7D figure and the logo turn red. On: you are also told once per quota window.'))
-    if (w.on) {
-      out.push(setting('wn2', 'Pop-up in the app', [
-        choice('wt-on', 'On', w.toast, () => setWarn({ toast: true })),
-        choice('wt-off', 'Off', !w.toast, () => setWarn({ toast: false })),
-      ], 'A small box at the top right of the conversation for about ten seconds.'))
-      out.push(setting('wn3', 'Windows notification', [
-        choice('wf-on', 'On', w.notify, () => setWarn({ notify: true })),
-        choice('wf-off', 'Off', !w.notify, () => setWarn({ notify: false })),
-      ], 'Also raises a Windows notification, so it reaches you when the app is in the background.'))
-      if (w.notify) {
-        out.push(setting('wn4', 'Quota is back', [
-          choice('wb-on', 'On', w.back, () => setWarn({ back: true })),
-          choice('wb-off', 'Off', !w.back, () => setWarn({ back: false })),
-        ], 'After a warning, books a Windows notification for the moment that quota resets (desktop app only).'))
-      }
-    }
-    out.push(section('h-sh', 'COMPACT BAR ITEMS', 'In priority order: placed first, dropped last'))
+      st.mode === 'minimal' ? 'Minimal: only the 5H and 7D quotas.'
+        : st.mode === 'normal' ? 'Normal: one row with every enabled item that fits, usage first.'
+        : 'Detailed: always two rows. The second row holds project, session, today, elapsed, trend and model.'))
+    out.push(setting('st1c', 'Second row', onOff('wr', !!st.wrap, v => act.setSettings(x => ({ ...x, wrap: v }))), 'In Normal mode, items that do not fit on the first row move to a second row. A wide window stays on one row.'))
+    out.push(setting('st1d', 'Lucelis logo', onOff('lg', !!st.logo, v => act.setSettings(x => ({ ...x, logo: v }))), 'The logo at the start of the bar (desktop app). Its bars draw in while Claude is working, and it turns red while a quota is low.'))
+    out.push(setting('st1e', 'Bar background', onOff('bg', !!st.bg, v => act.setSettings(x => ({ ...x, bg: v }))), "On: a navy fill behind the bar items. Off: the bar uses the app's own background and text colour."))
+
+    // ---- 2. Compact bar items
+    out.push(group('h-sh', 'COMPACT BAR ITEMS', 'What the bar shows. In priority order: placed first, dropped last'))
     // Each item's real state on the bar right now (the same layout code the bar draws with).
     const lay = st.isOn && bandColumns ? barLayout(v, st, bandColumns) : null
     const SAY: Record<ItemState, [string, string]> = {
@@ -649,64 +620,95 @@ export const paneTree = (ui: El, a: Agg | null, v: View, pv: PaneView, st: Setti
     }
     if (lay) {
       const waiting = ITEMS.filter(it => lay.state[it.key] === 'width').map(it => it.label)
-      out.push(note1('st-w', `The bar is ${bandColumns} columns wide now${waiting.length ? `: no room for ${waiting.join(', ')}. This pane narrows the bar while it is open. Close it (Details) or widen the window and they appear, in the order above. Turning an item off gives its room to the next one.` : ' and every enabled item with data fits.'}`, waiting.length ? ORANGE : MUTED))
+      out.push(<Box key="st-wb" marginTop={1}>{note1('st-w', `The bar is ${bandColumns} columns wide now${waiting.length ? `: no room for ${waiting.join(', ')}. This pane narrows the bar while it is open. Close it (Details) or widen the window and they appear, in the order above. Turning an item off gives its room to the next one.` : ' and every enabled item with data fits.'}`, waiting.length ? ORANGE : MUTED)}</Box>)
     } else if (!st.isOn) out.push(note1('st-w', 'The bar is off, so no item is drawn.'))
     out.push(note1('st-e', 'A toggle always wins: nothing is forced onto the bar. With every item off the bar says so and keeps its two buttons.'))
-    out.push(section('h-sd', 'DASHBOARD'))
-    out.push(row('st3', [<Text key="l" color={MUTED}>Default period</Text>, ...PERIODS.map(p => choice(`dp-${p}`, PERIOD_LABEL[p], st.period === p, () => act.setSettings(x => ({ ...x, period: p }))))]))
-    out.push(row('st4', [<Text key="l" color={MUTED}>Heatmap metric</Text>, ...(['tokens', 'sessions', 'messages'] as const).map(m => choice(`dh-${m}`, m, st.heat === m, () => act.setSettings(x => ({ ...x, heat: m }))))]))
-    out.push(note1('st-sv', 'Settings are saved at once and kept across sessions.'))
-    out.push(section('h-al', 'PROJECT ALIASES', 'longest matching path wins'))
-    out.push(note1('al-n', 'When detection is ambiguous, map a folder (and everything under it) to one project name.'))
+
+    // ---- 3. Low-quota warning: one choice per quota
+    const w = st.warn
+    out.push(group('h-wn', 'LOW-QUOTA WARNING', 'When a quota is low, its figure and the logo turn red, and you get one pop-up'))
+    for (const [k, label, name] of [['h5', '5H quota', '5-hour'], ['d7', '7D quota', '7-day']] as const) {
+      const lvl = w[k] ?? 30
+      out.push(setting(`wn-${k}`, label, [
+        choice(`wn-${k}-0`, 'Off', lvl === 0, () => act.setSettings(x => ({ ...x, warn: { ...x.warn, [k]: 0 } }))),
+        ...LEVELS.map(n => choice(`wn-${k}-${n}`, `${n}%`, lvl === n, () => act.setSettings(x => ({ ...x, warn: { ...x.warn, [k]: n } })))),
+      ], lvl
+        ? `At ${lvl}% left or less, the ${name} figure and the logo turn red, and one pop-up says so (once per ${name} window, in one session only).`
+        : `Off: the ${name} figure is never red and there is no pop-up for it.`))
+    }
+
+    // ---- 4. This pane
+    out.push(group('h-sd', 'DASHBOARD', 'How this pane opens'))
+    out.push(setting('st3', 'Default period', PERIODS.map(p => choice(`dp-${p}`, PERIOD_LABEL[p], st.period === p, () => act.setSettings(x => ({ ...x, period: p })))),
+      'The period Overview, Projects, Models and Patterns open on. Each of those tabs can still change it for a while.'))
+    out.push(setting('st4', 'Heatmap counts', (['tokens', 'sessions', 'messages'] as const).map(m => choice(`dh-${m}`, m[0].toUpperCase() + m.slice(1), st.heat === m, () => act.setSettings(x => ({ ...x, heat: m })))),
+      'What each square of the heatmap on the Patterns tab counts.'))
+
+    // ---- 5. Project names
+    out.push(group('h-al', 'PROJECT NAMES', 'How the folders in your history are grouped into projects'))
+    out.push(note1('al-n', 'Each folder Claude worked in is named after its git repository, or else the folder the session started in. If a name is wrong, or two folders should count as one project, add an alias: that folder and everything under it get the name you give. The longest matching folder wins.'))
     for (const [i, al] of aliases.entries()) {
       out.push(
-        <Box key={`al-${i}`} flexDirection="column" marginBottom={0}>
-          <Box flexDirection="row"><Text color={TEXT} bold>{al.name}</Text><Text color={MUTED}>{'  ← ' + al.path}</Text></Box>
-          <Box flexDirection="row"><Button key={`al-rm-${i}`} variant="secondary" label="Remove" onPress={() => act.setSettings(x => ({ ...x, aliases: (x.aliases ?? []).filter((_, j) => j !== i) }))} /></Box>
+        <Box key={`al-${i}`} flexDirection="row" flexWrap="wrap" columnGap={1} alignItems="center" marginTop={1}>
+          <Text color={TEXT} bold>{al.name}</Text>
+          <Text color={MUTED}>{'← ' + al.path}</Text>
+          <Button key={`al-rm-${i}`} variant="secondary" label="Remove" onPress={() => act.setSettings(x => ({ ...x, aliases: (x.aliases ?? []).filter((_, j) => j !== i) }))} />
         </Box>,
       )
     }
     if (Input) {
-      out.push(<Input key="alias-add" label="Add alias" value="" placeholder="C:\path\to\folder => Name" submitLabel="Add" onSubmit={(text: string) => {
+      out.push(<Box key="alias-box" marginTop={1}><Input key="alias-add" label="Add alias" value="" placeholder="C:\path\to\folder => Name" submitLabel="Add" onSubmit={(text: string) => {
         const m = /^(.+?)\s*=>\s*(.+)$/.exec(text.trim())
         if (m) act.setSettings(x => ({ ...x, aliases: [...(x.aliases ?? []).filter(y => y.path.toLowerCase() !== m[1].trim().toLowerCase()), { path: m[1].trim(), name: m[2].trim() }] }))
-      }} />)
+      }} /></Box>)
     }
-    out.push(section('h-dp', 'DETECTED PROJECTS'))
     const seen = new Map<string, { name: string; source: string }>()
     for (const k in a.rows) { const pr = resolve(k.split('\t')[2]); if (!seen.has(pr.key)) seen.set(pr.key, { name: pr.name, source: pr.source }) }
-    for (const [k, e] of [...seen.entries()].sort()) {
-      out.push(
-        <Box key={`dp-${k}`} flexDirection="column">
-          <Box flexDirection="row"><Text color={TEXT} bold>{e.name}</Text><Text color={MUTED}>{'  ' + e.source}</Text></Box>
-          <Text color={MUTED}>{k}</Text>
-        </Box>,
-      )
+    const HOW: Record<string, string> = { alias: 'your alias', git: 'git repository', root: 'folder the session started in', cwd: 'working folder' }
+    out.push(<Box key="dp-t" marginTop={1}><Button key="dp-toggle" plain label={`${pv.folders ? 'Hide' : 'Show'} the ${seen.size} project${seen.size === 1 ? '' : 's'} found ${pv.folders ? '▴' : '▾'}`} onPress={() => act.setView(x => ({ ...x, folders: !x.folders }))} /></Box>)
+    if (pv.folders) {
+      for (const [k, e] of [...seen.entries()].sort()) {
+        out.push(
+          <Box key={`dp-${k}`} flexDirection="column" marginTop={1}>
+            <Box flexDirection="row"><Text color={TEXT} bold>{e.name}</Text><Text color={MUTED}>{`  named from: ${HOW[e.source] ?? e.source}`}</Text></Box>
+            <Text color={MUTED}>{k}</Text>
+          </Box>,
+        )
+      }
     }
-    out.push(section('h-dd', 'DATA'))
-    out.push(row('st5', [
+
+    // ---- 6. History data and export
+    out.push(group('h-dd', 'HISTORY DATA', 'What Lucelis has read from your Claude transcripts'))
+    out.push(setting('st5', 'Read history', [
       <Button key="refresh" variant="secondary" label="Refresh" onPress={act.refresh} />,
       <Button key="rebuild" variant="secondary" label="Rebuild cache" onPress={act.rebuild} />,
-    ]))
+    ], 'Refresh reads what is new since the last read. Rebuild reads every transcript again (a few seconds); use it after moving or renaming folders.'))
     out.push(note1('dd-s', note ? `Last result: ${note}` : 'Last result: none yet', note.startsWith('refresh failed') ? WARM : TEXT))
     out.push(note1('dd-n', `Cache ~/.claude/lucelis/cache-a.json + cache-b.json · parser v${a.v} · built ${new Date(a.built).toISOString().slice(0, 16).replace('T', ' ')} UTC${a.parseErrors ? ` · ${a.parseErrors} unreadable lines skipped` : ''}${a.shape ? ` · ${a.shape} replies in an unknown format` : ''}${a.flagged ? ` · ${a.flagged} damaged records excluded` : ''}`))
-    out.push(section('h-ex', 'EXPORT'))
-    out.push(row('ex1', [
+    out.push(<Box key="ex-gap" marginTop={1}>{setting('ex1', 'Export', [
       <Button key="export" variant="secondary" label={`Export CSV · ${PERIOD_LABEL[period]}`} onPress={() => act.exportCsv(rg.from, rg.to)} />,
-    ]))
-    out.push(note1('ex-n', `One row per day, project and model with token counts; no conversation text. Saved to ${st.exportDir || 'your Documents folder'}.`))
+    ], `One row per day, project and model with token counts, for the default period; no conversation text. Saved to ${st.exportDir || 'your Documents folder'}.`)}</Box>)
     if (Input) {
       out.push(<Input key="export-dir" label="Export folder" value={st.exportDir ?? ''} placeholder="C:\Users\you\Documents" submitLabel="Set" onSubmit={(text: string) => act.setSettings(x => ({ ...x, exportDir: text.trim().replace(/[\\/]+$/, '') }))} />)
     }
-    out.push(section('h-up', 'UPDATES'))
+    out.push(<Box key="st-svb" marginTop={2}>{note1('st-sv', 'Settings are saved at once and kept across sessions. Version and updates: About Lucelis, at the bottom of Overview.')}</Box>)
+  }
+
+  if (pv.tab !== 'settings' && note) out.push(<Box key="foot" marginTop={1}><Text color={MUTED}>{`History: ${note}`}</Text></Box>)
+  if (formatSuspect(a)) out.push(<Box key="format" marginTop={note && pv.tab !== 'settings' ? 0 : 1}><Text color={WARM}>{FORMAT_NOTE}</Text></Box>)
+  return <Box flexDirection="column" paddingX={1}>{out}</Box>
+
+  // ---- About Lucelis: the bottom of Overview
+  function about() {
+    out.push(section('h-ab', 'ABOUT LUCELIS', 'Version, updates and what is new', { gap: 2 }))
     const u = act.update
     out.push(row('up1', [
-      <Text key="v" color={TEXT}>{`Installed: ${u.installed || 'unknown'}`}</Text>,
+      <Text key="v" color={TEXT} bold>{`Lucelis ${u.installed || ''}`.trim()}</Text>,
       <Button key="check" variant="secondary" label={u.phase === 'checking' ? 'Checking…' : 'Check for updates'} onPress={act.checkUpdate} />,
       u.phase === 'newer' || u.phase === 'copied' ? <Button key="copy" variant="primary" label="Copy update commands" onPress={act.copyUpdate} /> : null,
     ]))
     const UPD: Record<UpdateState['phase'], string> = {
-      idle: 'Asks GitHub for the latest version only when you press the button.',
+      idle: 'Check for updates asks GitHub for the latest version number, only when you press it.',
       checking: 'Asking GitHub…',
       latest: `You have the latest version${u.latest ? ` (${u.latest})` : ''}.`,
       newer: `Version ${u.latest} is available. Press Copy update commands, paste them into the prompt, then start a new session.`,
@@ -714,12 +716,24 @@ export const paneTree = (ui: El, a: Agg | null, v: View, pv: PaneView, st: Setti
       copied: 'Copied. Paste into the prompt and send, then start a new session to load the new version.',
     }
     out.push(note1('up-n', UPD[u.phase], u.phase === 'failed' ? WARM : u.phase === 'newer' ? GOOD : MUTED))
-    out.push(note1('dd-p', 'Local-only • No telemetry • No model calls • Network only when you press Check for updates'))
+    const n = act.news
+    if (n) {
+      out.push(<Box key="news-b" marginTop={1} flexDirection="column">
+        <Text key="h" color={TEXT} bold>{`New in ${n.version}`}</Text>
+        {row('news', [
+          <Text key="t" color={MUTED}>{n.summary ? `${n.summary}.` : 'See the full notes.'}</Text>,
+          <Button key="news-notes" plain label={n.copied ? 'Link copied' : 'Full notes'} onPress={() => act.copyNotes?.()} />,
+          <Button key="news-x" plain label="Dismiss" onPress={() => act.dismissNews?.()} />,
+        ])}
+      </Box>)
+    } else {
+      out.push(row('ab-cl', [<Button key="ab-notes" plain label={act.notesCopied ? 'Changelog link copied' : 'Copy the changelog link'} onPress={() => act.copyNotes?.()} />]))
+    }
+    out.push(<Box key="ab-p" marginTop={1} flexDirection="column">
+      <Text key="p1" color={MUTED}>Local-only • No telemetry • No model calls • Network only when you press Check for updates</Text>
+      <Text key="p2" color={MUTED}>Windows · Copyright (c) 2026 obiwong2579 · PolyForm Noncommercial License 1.0.0</Text>
+    </Box>)
   }
-
-  if (pv.tab !== 'settings' && note) out.push(<Box key="foot" marginTop={1}><Text color={MUTED}>{`History: ${note}`}</Text></Box>)
-  if (formatSuspect(a)) out.push(<Box key="format" marginTop={note && pv.tab !== 'settings' ? 0 : 1}><Text color={WARM}>{FORMAT_NOTE}</Text></Box>)
-  return <Box flexDirection="column" paddingX={1}>{out}</Box>
 
   // ---- the next-message cost table (Session and Models)
   function costTable(ui2: El, v2: View, width: number, k: string) {

@@ -12,7 +12,7 @@ import type { ClaimIo, Warned } from '../hooks/warn'
 import { DEFAULT_LEVEL, LEVELS, claim, due, forgetHandled, isLow, levelFor, message, prune, windowId } from '../hooks/warn'
 
 const NOW = Date.parse('2026-11-11T10:00:00Z')
-const WARN = { on: true, h5: 20, d7: 20, toast: true, notify: false, back: false }
+const WARN = { h5: 20, d7: 20 }
 const H5 = (used: number, resetsAt = '2026-11-11T12:30:00Z') => ({ kind: 'five_hour', percentUsed: used, resetsAt })
 const D7 = (used: number, resetsAt = '2026-11-14T08:00:00Z') => ({ kind: 'seven_day', percentUsed: used, resetsAt })
 
@@ -24,7 +24,8 @@ test('due: at or under the level, once per window; each window on its own', asyn
   expect(due([H5(95), D7(85)], WARN, {}).map(w => w.kind)).toEqual(['five_hour', 'seven_day'])
   expect(due([H5(85)], { ...WARN, h5: 10 }, {}).length).toBe(0) // 15% left: above a 10% level
   expect(due([H5(91)], { ...WARN, h5: 10 }, {}).length).toBe(1)
-  expect(due([H5(95)], { ...WARN, on: false }, {}).length).toBe(0)
+  expect(due([H5(95)], { ...WARN, h5: 0 }, {}).length).toBe(0) // 5H off
+  expect(due([{ ...H5(95), stale: true }], WARN, {}).length).toBe(0) // a last-seen figure never warns
   const warned: Warned = { [windowId(H5(95))]: { by: 'x', at: 1 } }
   expect(due([H5(95)], WARN, warned).length).toBe(0)
   // A reset time reported a few seconds off is the same window; a new reset hour is a new one.
@@ -112,7 +113,7 @@ const bootWarn = async ($: any, on: any, opts: { warned?: Warned; settings?: unk
   return { calls, clock, measure }
 }
 
-test('crossing the level: one pop-up, not repeated in the same window; 7D warns on its own; no notification when off', async ($, on) => {
+test('crossing the level: one pop-up, not repeated in the same window; 7D warns on its own; never a Windows notification', async ($, on) => {
   const { calls, measure } = await bootWarn($, on)
   await measure(H5(65), D7(10))
   expect(calls.toast.length).toBe(0)
@@ -133,20 +134,8 @@ test('a window another session already warned about stays quiet here', async ($,
   expect(calls.toast.length).toBe(0)
 })
 
-test('Windows notification and "quota is back": booked at the reset time, taken back when the quota recovers', async ($, on) => {
-  const { calls, measure } = await bootWarn($, on, { settings: { warn: { ...WARN, notify: true, back: true } } })
-  const band = await $.ui.mount({ plugin: 'lucelis', surface: 'desktop', component: 'AbovePrompt', props: { hasSurvey: false, isWorking: false, maxRows: 40, bodyColumns: 120, scroll: { offset: 0, bodyRows: 40 }, view: {} } })
-  await measure(H5(85))
-  expect(calls.notify.map(n => n.options?.key ?? n.key)).toEqual([`lucelis-low-${windowId(H5(85))}`, 'lucelis-back-five_hour'])
-  const back = calls.notify[1]
-  expect(back.options?.at ?? back.at).toBe(Date.parse('2026-11-11T12:30:00Z'))
-  await measure(H5(5)) // recovered early (95% left)
-  expect(calls.cancel).toEqual(['lucelis-back-five_hour'])
-  await band.unmount()
-})
-
-test('warning off: nothing at all', async ($, on) => {
-  const { calls, measure } = await bootWarn($, on, { settings: { warn: { ...WARN, on: false } } })
+test('both quotas off: nothing at all, and no red', async ($, on) => {
+  const { calls, measure } = await bootWarn($, on, { settings: { warn: { h5: 0, d7: 0 } } })
   await measure(H5(99), D7(99))
   expect(calls.toast.length + calls.notify.length).toBe(0)
 })
@@ -187,8 +176,10 @@ test('one level for the figure, the logo and the warning: 30% left by default, 1
   expect(levelFor('other', WARN)).toBe(null)
   expect([100, 70, 69, 31, 30, 0].map(n => quotaHealth(n, 30))).toEqual([GOOD, GOOD, YELLOW, YELLOW, RED, RED])
   expect(quotaHealth(40, 40)).toBe(RED)
-  // The level colours the logo even with the pop-up off.
-  expect(isLow([H5(72)], { ...WARN, on: false, h5: 30 })).toBe(true)
+  // Off (0): never red, the logo never low.
+  expect([5, 0].map(n => quotaHealth(n, 0))).toEqual([YELLOW, YELLOW])
+  expect(isLow([H5(99)], { h5: 0, d7: 30 })).toBe(false)
+  expect(isLow([H5(72)], { h5: 30, d7: 0 })).toBe(true)
   // The bar figure turns red exactly where the logo does.
   const st = { show: { h5: true, d7: true }, warn: { ...WARN, h5: 40, d7: 30 } } as any
   const v = { quotas: [{ kind: 'five_hour', left: 40, resetIn: null }, { kind: 'seven_day', left: 31, resetIn: null }] } as any
@@ -223,7 +214,7 @@ test('no network at all until Check for updates is pressed; then one request, an
   const band = await $.ui.mount({ plugin: 'lucelis', surface: 'desktop', component: 'AbovePrompt', props: { hasSurvey: false, isWorking: false, maxRows: 40, bodyColumns: 120, scroll: { offset: 0, bodyRows: 40 }, view: {} } })
   await clock.advance(5 * 60_000) // timers: the minute redraw
   const pane = await $.ui.mount(PANE)
-  await pane.press({ key: 'tab-settings' })
+  // About Lucelis, at the bottom of Overview (the tab the pane opens on).
   expect(calls.fetch.length).toBe(0)
   await pane.press({ key: 'check' })
   await clock.settle()
@@ -239,11 +230,11 @@ test('no network at all until Check for updates is pressed; then one request, an
 test('a failed check says so and changes nothing', async ($, on) => {
   const { clock } = await bootWarn($, on, { fetch: { status: 404, ok: false, text: 'no' }, history: true })
   const pane = await $.ui.mount(PANE)
-  await pane.press({ key: 'tab-settings' })
   await pane.press({ key: 'check' })
   await clock.settle()
   expect(await pane.find({ text: /Could not check: GitHub answered 404/ })).toBeDefined()
   expect(await pane.find({ key: 'copy' })).toBeUndefined()
+  expect(await pane.find({ text: /^Lucelis 1\.1\.0$/ })).toBeDefined()
   await pane.unmount()
 })
 

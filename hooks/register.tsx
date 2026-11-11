@@ -12,7 +12,7 @@ import { MUTED } from './fmt'
 import { view } from './model'
 import { TAB_LABEL, paneTree } from './pane'
 import { NOTES_URL, UPDATE_COMMANDS, compareVersions, installedVersion, latestVersion, whatsNew } from './update'
-import { claim, due, fileIo, leftOf, levelFor, message, windowId } from './warn'
+import { claim, due, fileIo, leftOf, message, windowId } from './warn'
 
 // Lucelis: a bar above the prompt (5H / 7D quota, prompt cache, context, the current
 // session, today's project usage) that opens into a session summary, plus the Lucelis
@@ -40,7 +40,7 @@ const DEFAULTS: Settings = {
   heat: 'tokens',
   show: { h5: true, d7: true, cache: true, ctx: true, resets: true, today: true, session: true, elapsed: true, trend: true, project: true, model: true },
   aliases: [],
-  warn: { on: true, h5: 30, d7: 30, toast: true, notify: false, back: false },
+  warn: { h5: 30, d7: 30 },
   exportDir: '',
 }
 const VIEW: PaneView = { period: null, heat: null, modelBy: 'tokens', project: null, tab: 'overview', help: false }
@@ -84,7 +84,8 @@ async function openPane($: EngineInterface, tab?: PaneView['tab']) {
   let wasOpen = false
   try { wasOpen = (await $.ui.panes()).some(p => p.id === PANE) } catch { wasOpen = false }
   if (tab) await update($, paneView, v => ({ ...v, tab, project: null }))
-  const r = await $.ui.open({ id: PANE, title: 'Lucelis', rows: 32, columns: 110, focus: true })
+  if (!version) version = await installedVersion($)
+  const r = await $.ui.open({ id: PANE, title: version ? `Lucelis ${version}` : 'Lucelis', rows: 32, columns: 110, focus: true })
   if (wasOpen && tab) { try { await $.ui.toast(`Lucelis pane: ${TAB_LABEL[tab]} tab`) } catch { /* no surface */ } }
   await update($, rev, n => n + 1)
   // Fresh history for the pane, but not a reader process per press: at most one a minute.
@@ -122,6 +123,10 @@ async function cwdNow($: EngineInterface): Promise<string | null> {
 }
 
 let cwd: string | null = null
+/** The running version, for the pane title. */
+let version = ''
+/** The changelog link was copied this session (About Lucelis says so). */
+let notesCopied = false
 /** The band's width at its last draw, so Settings can say which items fit (null: not drawn yet). */
 let bandColumns: number | null = null
 let lastRun = 0
@@ -140,47 +145,18 @@ async function sync($: EngineInterface, full = false): Promise<string> {
   }
 }
 
-/** The surface the band last drew on: a reset-time notification is booked only from the desktop app. */
-let lastSurface: string | null = null
-/** "Quota is back" notifications this session booked: window kind -> the window it was for. */
-const booked = new Map<string, string>()
-
 /**
  * Low-quota warning (warn.ts): one session claims each window that dropped to its level and
- * warns: the app's pop-up, and a Windows notification if the person turned that on. Never
- * throws, never awaited before the event goes on.
+ * shows one pop-up in the app. Never throws, never awaited before the event goes on.
  */
 async function checkWarn($: EngineInterface, list: readonly Window[]): Promise<void> {
   try {
-    const st = await read($, settings)
-    const w = st.warn ?? DEFAULTS.warn
-    // A booked "quota is back" that is no longer right (a new window, or it recovered early) is taken back.
-    for (const [kind, id] of [...booked]) {
-      const now = list.find(x => x.kind === kind)
-      const lvl = levelFor(kind, w) ?? 0
-      if (!now || windowId(now) !== id || leftOf(now) > lvl + 10 || !(w.notify && w.back)) {
-        booked.delete(kind)
-        try { await $.ui.cancelNotify(`lucelis-back-${kind}`) } catch { /* no host */ }
-      }
-    }
-    if (!w.on || !due(list, w, {}).length) return
+    const w = (await read($, settings)).warn ?? DEFAULTS.warn
+    if (!due(list, w, {}).length) return
     const lv = await read($, live)
     const now = await $.clock.now()
     const won = await claim(fileIo($, `${(await paths($)).dir}\\warned.json`), lv?.sid ?? 'unknown', now, list, w)
-    for (const x of won) {
-      const text = message(x, now)
-      if (w.toast) { try { await $.ui.toast(`Lucelis: ${text}`, { timeoutMs: 10_000 }) } catch { /* no surface */ } }
-      if (w.notify) {
-        try { await $.ui.notify(text, { title: 'Lucelis', key: `lucelis-low-${windowId(x)}` }) } catch { /* turned off */ }
-        const at = x.resetsAt ? Date.parse(x.resetsAt) : NaN
-        if (w.back && lastSurface === 'desktop' && !Number.isNaN(at) && at > now) {
-          try {
-            await $.ui.notify(`Your ${x.kind === 'five_hour' ? '5-hour' : '7-day'} quota has reset.`, { title: 'Lucelis', key: `lucelis-back-${x.kind}`, at })
-            booked.set(x.kind, windowId(x))
-          } catch { /* not booked */ }
-        }
-      }
-    }
+    for (const x of won) { try { await $.ui.toast(`Lucelis: ${message(x, now)}`, { timeoutMs: 10_000 }) } catch { /* no surface */ } }
   } catch { /* a warning never holds the session up */ }
 }
 
@@ -193,6 +169,8 @@ async function checkNews($: EngineInterface): Promise<void> {
   try {
     const installed = await installedVersion($)
     if (!installed) return
+    version = installed
+    await update($, upd, u => (u.installed ? u : { ...u, installed }))
     const seen = await $.store.get('seenVersion')
     if (seen === installed) return
     await $.store.set('seenVersion', installed)
@@ -394,7 +372,6 @@ export const register: Register = on => {
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     if (e.props.hasSurvey) return next(e)
-    lastSurface = e.surface ?? lastSurface
     const st = await read($, settings)
     if (!st.isOn) return next(e)
     const ui = $.ui.resolve(e)
@@ -475,8 +452,11 @@ export const register: Register = on => {
       copyNotes: () => { void (async () => {
         let ok = false
         try { ok = (await $.ui.copy({ text: NOTES_URL })).isCopied } catch { ok = false }
+        notesCopied = ok
         await update($, news, n => (n ? { ...n, copied: ok } : n))
+        await update($, rev, r => r + 1)
       })() },
+      notesCopied,
     })
   })
 
