@@ -104,6 +104,6 @@ test('both slots damaged: rebuild from the transcripts, never show garbage', asy
   files.set(`${DIR}\\cache-b.json`, 'not json')
   const M: Mem = { held: null, seq: 0 }
   const note = await refreshCore(io(), PATHS, M, false)
-  expect(note).toContain('unreadable')
+  expect(note).toContain('could not be read')
   expect(activity(M)).toBe(111)
 })

@@ -127,13 +127,13 @@ export const refreshCore = async (io: Io, paths: Paths, mem: Mem, full: boolean)
   const disk = await readSlots(io, paths.dir)
   let why = ''
   let a: Agg
-  if (full) { a = emptyAgg(); why = 'rebuilt on request' }
+  if (full) { a = emptyAgg(); why = 'Rebuilt on request.' }
   else if (disk.best) a = disk.best.agg
-  else { a = emptyAgg(); if (disk.damaged) why = 'cache unreadable: rebuilt' }
-  if (!full && disk.damaged && disk.best) why = 'one cache slot was damaged: used the other'
+  else { a = emptyAgg(); if (disk.damaged) why = 'The cache could not be read, so it was rebuilt.' }
+  if (!full && disk.damaged && disk.best) why = 'One cache copy was damaged, so the other was used.'
   const found = await discover(io, paths.projects)
   // A file that shrank was rewritten: the only safe answer is a clean rebuild.
-  if (found.some(f => a.files[f.p] && f.size < a.files[f.p].o)) { a = emptyAgg(); why = 'a transcript was rewritten: rebuilt' }
+  if (found.some(f => a.files[f.p] && f.size < a.files[f.p].o)) { a = emptyAgg(); why = 'A transcript was rewritten, so the cache was rebuilt.' }
   // Owners: every session with any transcript file of its own (main or subagents/). A fork's
   // subagents/ folder holds copies of its parent's subagent transcripts under the parent's id;
   // those must stay copies even when the parent's main transcript is gone.
@@ -156,8 +156,8 @@ export const refreshCore = async (io: Io, paths: Paths, mem: Mem, full: boolean)
   }
   mem.held = a
   const ms = (await io.now()) - t0
-  const msg = calls ? `${rows} new records from ${calls} read${calls > 1 ? 's' : ''} in ${(ms / 1000).toFixed(1)}s` : 'up to date'
-  return (why ? `${why}; ${msg}` : msg) + (a.flagged ? ` · ${a.flagged} damaged records excluded` : '')
+  const msg = calls ? `${rows} new record${rows === 1 ? '' : 's'} read in ${(ms / 1000).toFixed(1)} s.` : 'Up to date.'
+  return (why ? `${why} ${msg}` : msg) + (a.flagged ? ` ${a.flagged} damaged record${a.flagged === 1 ? ' was' : 's were'} left out.` : '')
 }
 
 /** Loads the newest good snapshot without extracting (session start). */

@@ -257,7 +257,7 @@ test('Settings: groups in order, each warning is one choice per quota, updates l
   // Detected projects are folded away until asked for.
   expect(await pane.find({ key: 'dp-F:\\W\\Atlas' })).toBe(undefined)
   await pane.press({ key: 'dp-toggle' })
-  expect(JSON.stringify(await pane.find({}))).toContain('named from:')
+  expect(JSON.stringify(await pane.find({}))).toContain('named from ')
   await pane.unmount()
 })
 

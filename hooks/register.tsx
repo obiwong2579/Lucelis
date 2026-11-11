@@ -141,7 +141,7 @@ async function sync($: EngineInterface, full = false): Promise<string> {
     return msg
   } catch (err) {
     // The session may have ended under a background refresh; nothing to tell then.
-    return `refresh failed: ${String((err as Error)?.message ?? err).slice(0, 200)}`
+    return `Refresh failed: ${String((err as Error)?.message ?? err).slice(0, 200)}`
   }
 }
 
@@ -257,21 +257,21 @@ async function copyUpdate($: EngineInterface): Promise<void> {
   let ok = false
   try { ok = (await $.ui.copy({ text: UPDATE_COMMANDS })).isCopied } catch { ok = false }
   if (ok) await update($, upd, u => ({ ...u, phase: 'copied' }))
-  else { try { await $.ui.toast(`Lucelis: copy did not work. Type these into the prompt: ${UPDATE_COMMANDS.replace('\n', '  then  ')}`, { timeoutMs: 15_000 }) } catch { /* no surface */ } }
+  else { try { await $.ui.toast(`Lucelis: Copying did not work. Type these into the prompt, one after the other: ${UPDATE_COMMANDS.replace('\n', ', then ')}`, { timeoutMs: 15_000 }) } catch { /* no surface */ } }
 }
 
 /** Writes the CSV for [from, to] to the export folder and says where. */
 async function exportCsv($: EngineInterface, from: string, to: string): Promise<void> {
   try {
     const a = aggNow()
-    if (!a) { await $.ui.toast('Lucelis export: no history read yet. Press Refresh first.'); return }
+    if (!a) { await $.ui.toast('Lucelis export: No history has been read yet. Press Refresh first.'); return }
     const st = await read($, settings)
     const home = (await $.env.get('USERPROFILE')) || (await $.env.get('HOME')) || ''
     const dir = (st.exportDir || `${home}\\Documents`).replace(/[\\/]+$/, '')
     const { text, rows } = toCsv(a, makeResolver(a, st.aliases ?? []), from, to)
     const path = `${dir}\\${exportName(localDay(await $.clock.now(), a.tz))}`
     await $.fs.write(path, text)
-    await $.ui.toast(`Lucelis export: ${rows} rows saved to ${path}`, { timeoutMs: 10_000 })
+    await $.ui.toast(`Lucelis export: ${rows} row${rows === 1 ? '' : 's'} saved to ${path}`, { timeoutMs: 10_000 })
   } catch (err) {
     try { await $.ui.toast(`Lucelis export failed: ${String((err as Error)?.message ?? err).slice(0, 160)}`, { timeoutMs: 10_000 }) } catch { /* no surface */ }
   }
@@ -302,7 +302,7 @@ export const register: Register = on => {
     await update($, live, () => ({ sid, startedAt: u.startedAt || null }))
     for (const [name, description] of [
       ['lucelis', 'Open the Lucelis Activity dashboard'],
-      ['lucelis-refresh', 'Read new history into the Lucelis cache (incremental)'],
+      ['lucelis-refresh', 'Read new history into the Lucelis cache'],
       ['lucelis-rebuild', 'Rebuild the Lucelis cache from all transcripts'],
       ['lucelis-settings', 'Open the Lucelis settings'],
     ] as const) await $.command.register({ name, description })

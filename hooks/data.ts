@@ -51,7 +51,7 @@ export async function refresh($: EngineInterface, full = false): Promise<string>
   if (running) { const r = await running; if (!full) return r }
   const p = await paths($)
   running = refreshCore(makeIo($), p, mem, full)
-    .catch(err => `refresh failed: ${String((err as Error)?.message ?? err).slice(0, 200)}`)
+    .catch(err => `Refresh failed: ${String((err as Error)?.message ?? err).slice(0, 200)}`)
     .finally(() => { running = null })
   return running
 }

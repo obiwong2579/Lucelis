@@ -243,10 +243,11 @@ export const compactRow = (ui: El, v: View, st: Settings, columns: number, expan
   // The bars and glint turn red while a quota is at or under its warning level; the bars draw in while Claude works.
   const low = v.quotas.some(q => { const l = levelFor(q.kind, st.warn); return !q.stale && !!l && q.left <= l })
   const src = logoFor(working, low)
-  const alt = `Lucelis${working ? ', working' : ''}${low ? ', quota low' : ''}`
+  const state = [working ? 'Claude is working' : '', low ? 'quota low' : ''].filter(Boolean)
+  const alt = state.length ? `Lucelis: ${state.join(', ')}` : 'Lucelis'
   if (L.glyph && Svg) top.unshift(<Box key="glyph" marginRight={1} flexShrink={0}><Svg source={st.bg ? src : adaptiveLogo(src)} alt={alt} width={16} height={16} /></Box>)
   // Every item off (or nothing to show yet): say so instead of drawing a blank row.
-  if (!L.rows[0].length) top.push(<Text key="none" color={MUTED}>{L.narrow ? 'No bar items' : 'No bar items to show (see Settings)'}</Text>)
+  if (!L.rows[0].length) top.push(<Text key="none" color={MUTED}>{L.narrow ? 'No bar items' : 'No bar items to show. See Settings.'}</Text>)
   // The optional fill sits behind the items only. More / Details are the app's own buttons and
   // take the app's text colour, so they stay on the app's background and read in any theme.
   const fill = st.bg ? BG : undefined

@@ -50,7 +50,7 @@ export const HELP = [
   'Processed tokens = activity tokens + cache reads (all tokens the model handled).',
   'None of these token totals is your subscription usage. The 5H and 7D quotas (and their reset times) come from Claude itself; CTX is how full this conversation is, a different thing.',
   "Messages = your prompts + the main thread's responses (subagent responses add tokens, not messages).",
-  "Elapsed = now minus the session's first event. Active (est.) = gaps under 30 minutes between events, summed.",
+  "Elapsed = now minus the session's first event. Active (est.) = the gaps under 30 minutes between events, added up.",
   "WARM / COLD is inferred from request timing (60 minutes after a model's last request), not reported by Claude. Each model has its own cache.",
   `Next-message costs are API-price equivalent estimates (input side only, excluding your new message and output), not your bill. Prices as of ${PRICES_AS_OF}: ${PRICES_SOURCE}.`,
   'Project = an alias you set, else the git repository root, else the first folder under the directory Claude sessions start in.',
@@ -103,7 +103,7 @@ export const heatSvg = (byDay: Map<string, Slice>, from: string, to: string, by:
     const lv = level(vals[i])
     const color = lv ? ORANGE : CHART_EMPTY
     const op = lv ? ` fill-opacity="${fill[lv]}"` : ''
-    g += `<rect x="${24 + w * step}" y="${r * step}" width="${cell}" height="${cell}" rx="2" fill="${color}"${op}><title>${d}: ${fmtMetric(vals[i], by)}</title></rect>`
+    g += `<rect x="${24 + w * step}" y="${r * step}" width="${cell}" height="${cell}" rx="2" fill="${color}"${op}><title>${d}: ${fmtMetric(vals[i], by)} ${by}.</title></rect>`
   }
   for (const [r, n] of [[1, 'Mon'], [3, 'Wed'], [5, 'Fri']] as const)
     g += `<text x="0" y="${r * step + cell - 1}" font-size="9" fill="${MUTED}" font-family="sans-serif">${n}</text>`
@@ -129,7 +129,7 @@ export const barsSvg = (byDay: Map<string, Slice>, to: string, n: number, width:
   let g = ''
   days.forEach((d, i) => {
     const h = vals[i] ? Math.max(2, Math.round((vals[i] / max) * (H - 2))) : 1
-    g += `<rect x="${i * step}" y="${H - h}" width="${bw}" height="${h}" rx="1" fill="${vals[i] ? ORANGE : CHART_EMPTY}"><title>${d}: ${tok(vals[i])} activity tokens</title></rect>`
+    g += `<rect x="${i * step}" y="${H - h}" width="${bw}" height="${h}" rx="1" fill="${vals[i] ? ORANGE : CHART_EMPTY}"><title>${d}: ${tok(vals[i])} activity tokens.</title></rect>`
   })
   const W = n * step
   const cap = (x: number, anchor: string, t: string) => `<text x="${x}" y="${H + CAP - 3}" font-size="10" fill="${MUTED}" font-family="sans-serif" text-anchor="${anchor}">${t}</text>`
@@ -141,7 +141,7 @@ export const barsSvg = (byDay: Map<string, Slice>, to: string, n: number, width:
 }
 
 /** Counts per bucket as labelled bars (hours of the day, weekdays), SVG with tooltips. */
-export const histSvg = (vals: number[], labels: string[], tick: (i: number) => boolean, width: number, unit: string) => {
+export const histSvg = (vals: number[], labels: string[], tick: (i: number) => boolean, width: number, unit: string, titles?: string[]) => {
   const n = vals.length
   const max = Math.max(1, ...vals)
   const H = 44
@@ -151,7 +151,7 @@ export const histSvg = (vals: number[], labels: string[], tick: (i: number) => b
   let g = ''
   vals.forEach((v, i) => {
     const h = v ? Math.max(2, Math.round((v / max) * (H - 2))) : 1
-    g += `<rect x="${i * step}" y="${H - h}" width="${bw}" height="${h}" rx="1" fill="${v ? ORANGE : CHART_EMPTY}"><title>${labels[i]}: ${v} ${unit}</title></rect>`
+    g += `<rect x="${i * step}" y="${H - h}" width="${bw}" height="${h}" rx="1" fill="${v ? ORANGE : CHART_EMPTY}"><title>${(titles ?? labels)[i]}: ${v} ${v === 1 ? unit.replace(/s$/, '') : unit}.</title></rect>`
     if (tick(i)) g += `<text x="${i * step}" y="${H + CAP - 3}" font-size="10" fill="${MUTED}" font-family="sans-serif">${labels[i]}</text>`
   })
   const W = n * step
@@ -168,6 +168,8 @@ export const histSvg = (vals: number[], labels: string[], tick: (i: number) => b
 const TEXT = undefined as unknown as string
 /** Empty chart cells: a translucent grey that reads on a light and on a dark background. */
 const CHART_EMPTY = 'rgba(134,149,163,0.28)'
+/** Where a project's name came from, in words. */
+const HOW: Record<string, string> = { alias: 'your alias', git: 'its git repository', root: 'the folder the session started in', cwd: 'its working folder' }
 /** Hover cards: dark with light text, readable on a light or a dark app theme (as tooltips usually are). */
 const CARD_BG = '#1f2733'
 const CARD_TEXT = '#e8e6e1'
@@ -275,7 +277,7 @@ export const paneTree = (ui: El, a: Agg | null, v: View, pv: PaneView, st: Setti
 
   // ---------------------------------------------------------------- Overview
   if (pv.tab === 'overview') {
-    out.push(section('h-ov', `OVERVIEW · ${PERIOD_LABEL[period]}`, rg.prev ? `trend vs the previous ${nDays} days` : undefined, { period: true }))
+    out.push(section('h-ov', `OVERVIEW · ${PERIOD_LABEL[period]}`, rg.prev ? `trend against the previous ${nDays === 1 ? 'day' : `${nDays} days`}` : undefined, { period: true }))
     const sk = streaks(a, today)
     const topModel = [...cur.byModel.entries()].sort((x, y) => y[1].tokens - x[1].tokens)[0]
     const topProject = [...cur.byProject.entries()].sort((x, y) => y[1].tokens - x[1].tokens)[0]
@@ -331,7 +333,7 @@ export const paneTree = (ui: El, a: Agg | null, v: View, pv: PaneView, st: Setti
   if (pv.tab === 'session') {
     if (!s) out.push(note1('ns', 'No figures for this session yet: they appear after the first reply.'))
     else {
-      out.push(section('h-id', 'THIS SESSION', s.project ? `project from ${s.project.source}` : undefined))
+      out.push(section('h-id', 'THIS SESSION', s.project ? `project named from ${HOW[s.project.source] ?? s.project.source}` : undefined))
       out.push(grid('id', [
         s.project ? metric('id-p', 'Project', s.project.name) : null,
         s.model ? metric('id-m', 'Model', modelName(s.model)) : null,
@@ -387,12 +389,12 @@ export const paneTree = (ui: El, a: Agg | null, v: View, pv: PaneView, st: Setti
       out.push(section('h-pr', `THIS PROJECT${t?.project ? ' · ' + t.project.name : ''}`))
       out.push(grid('pt', [
         t?.project ? metric('pt-t', 'Project today', tok(t.project.tokens), TEXT, t.project.share !== null ? `${pct(t.project.share)} of today` : undefined) : null,
-        t?.project ? metric('pt-s', 'Today sess / msgs', `${t.project.sessions} / ${t.project.messages}`) : null,
+        t?.project ? metric('pt-s', 'Today: sessions / messages', `${t.project.sessions} / ${t.project.messages}`) : null,
         w?.project ? metric('pt-w', 'Last 7 days', tok(w.project.tokens), TEXT, w.project.change !== null ? trend(w.project.change) : undefined) : null,
         w?.share30 !== null && w?.share30 !== undefined ? metric('pt-3', '30-day share', pct(w.share30), TEXT, undefined, "This project's share of all your activity tokens in the last 30 days.") : null,
-        r ? metric('pt-r', 'vs usual session', `${tok(r.tokens[0])} vs ${tok(r.tokens[1])}`, TEXT, r.tokens[1] > 0 ? `${(r.tokens[0] / r.tokens[1]).toFixed(1)}×` : undefined, `This session against the usual one here: the median of this project's ${r.n} earlier sessions.`) : null,
+        r ? metric('pt-r', 'Tokens vs usual', `${tok(r.tokens[0])} vs ${tok(r.tokens[1])}`, TEXT, r.tokens[1] > 0 ? `${(r.tokens[0] / r.tokens[1]).toFixed(1)}×` : undefined, `This session against the usual one here: the median of this project's ${r.n} earlier sessions.`) : null,
         r && r.active[1] > 0 ? metric('pt-a', 'Active vs usual', `${dur(r.active[0])} vs ${dur(r.active[1])}`) : null,
-        r ? metric('pt-m', 'Msgs vs usual', `${r.messages[0]} vs ${Math.round(r.messages[1])}`) : null,
+        r ? metric('pt-m', 'Messages vs usual', `${r.messages[0]} vs ${Math.round(r.messages[1])}`) : null,
       ]))
       if (r) out.push(aside('pt-n', `"Usual" is the median of this project's ${r.n} earlier sessions.`))
       if (v.modelMix?.rows.length) out.push(note1('pt-mx', `30 days by model: ${v.modelMix.rows.map(x => `${modelName(x.model)} ${Math.round(x.share)}%`).join(' · ')}`))
@@ -406,7 +408,7 @@ export const paneTree = (ui: El, a: Agg | null, v: View, pv: PaneView, st: Setti
       const ps = q(rg.from, rg.to, p)
       const pp = rg.prev ? q(rg.prev.from, rg.prev.to, p) : null
       out.push(<Box key="back-row" marginTop={1}><Button key="back" label="‹ All projects" variant="secondary" onPress={() => act.setView(x => ({ ...x, project: null }))} /></Box>)
-      out.push(section('h-pd', `${nameOf(p)} · ${PERIOD_LABEL[period]}`, `${resolve(p).source} · ${p}`, { period: true }))
+      out.push(section('h-pd', `${nameOf(p)} · ${PERIOD_LABEL[period]}`, `named from ${HOW[resolve(p).source] ?? resolve(p).source}: ${p}`, { period: true }))
       const ss = sessionsOf(ps).map(([sid, x]) => ({ sid, x, s: a.sess[sid] }))
       const toks = ss.map(r => r.x.tokens)
       const msgs = ss.map(r => r.x.messages)
@@ -419,7 +421,7 @@ export const paneTree = (ui: El, a: Agg | null, v: View, pv: PaneView, st: Setti
         metric('pd-s', 'Sessions', String(ps.all.sessions.size)),
         metric('pd-m', 'Messages', String(ps.all.messages)),
         metric('pd-a', 'Tokens / session', `${tok(mean(toks))} avg`, TEXT, `${tok(median(toks))} median`),
-        metric('pd-b', 'Msgs / session', `${Math.round(mean(msgs))} avg`, TEXT, `${Math.round(median(msgs))} median`),
+        metric('pd-b', 'Messages / session', `${Math.round(mean(msgs))} avg`, TEXT, `${Math.round(median(msgs))} median`),
         longest ? metric('pd-l', 'Longest (active est.)', dur(longest.s.act), TEXT, (longest.s.title || longest.sid.slice(0, 8)).slice(0, 24), 'Time spent working: the gaps under 30 minutes between events, added up. Long breaks are left out.') : null,
         topM ? metric('pd-tm', 'Top model', modelName(topM[0])) : null,
         busiest ? metric('pd-bd', 'Busiest day', busiest[0], TEXT, DAYS[weekday(busiest[0])]) : null,
@@ -430,7 +432,7 @@ export const paneTree = (ui: El, a: Agg | null, v: View, pv: PaneView, st: Setti
         out.push(
           <Box key={`pdr-${r.sid}`} flexDirection="column" marginBottom={0}>
             <Text color={TEXT}>{r.s.title || r.sid.slice(0, 8)}</Text>
-            <Text color={MUTED}>{`${when(r.s.last, a.tz, now)} · ${tok(r.x.tokens)} tokens · ${r.x.messages} msgs · ${dur(r.s.act)} active`}</Text>
+            <Text color={MUTED}>{`${when(r.s.last, a.tz, now)} · ${tok(r.x.tokens)} tokens · ${r.x.messages} messages · ${dur(r.s.act)} active`}</Text>
           </Box>,
         )
       }
@@ -468,13 +470,13 @@ export const paneTree = (ui: El, a: Agg | null, v: View, pv: PaneView, st: Setti
               <Box flexDirection="row" flexWrap="wrap">
                 <Text color={ORANGE}>{d.on}</Text><Text color={EMPTY}>{d.off}</Text>
                 <Text color={TEXT} bold>{` ${tok(x.tokens)}`}</Text>
-                <Text color={MUTED}>{` · ${pct(share)} · ${x.sessions.size} sess · ${x.messages} msgs${prev ? ' · ' + (pr ? trend(change(x.tokens, pr.tokens)) : 'new') : ''}`}</Text>
+                <Text color={MUTED}>{` · ${pct(share)} · ${x.sessions.size} sessions · ${x.messages} messages${prev ? ' · ' + (pr ? trend(change(x.tokens, pr.tokens)) : 'new') : ''}`}</Text>
               </Box>
             </Box>,
           )
         }
       }
-      out.push(aside('pr-n', 'Share and trend use activity tokens. Select a project for its details. Project names come from aliases, git roots or folders (see Settings).'))
+      out.push(aside('pr-n', 'Share and trend use activity tokens. Select a project for its details. Project names come from your aliases, git repositories or folders (see Settings).'))
     }
   }
 
@@ -485,7 +487,7 @@ export const paneTree = (ui: El, a: Agg | null, v: View, pv: PaneView, st: Setti
     if (v.costs && v.cache) out.push(...costTable(ui, v, cols, 'mod'))
     else out.push(section('h-nm-none', 'NEXT MESSAGE', 'by model'), note1('nm-none', 'No estimate yet: it needs the first reply of this session (the context size and the cache clock).'))
     out.push(section('h-md', `MODELS · ${PERIOD_LABEL[period]}`, undefined, { period: true }))
-    out.push(row('md-m', [<Text key="l" color={MUTED}>Compare by</Text>, ...(['tokens', 'sessions', 'messages'] as const).map(m => choice(`md-${m}`, m, by === m, () => act.setView(x => ({ ...x, modelBy: m }))))]))
+    out.push(row('md-m', [<Text key="l" color={MUTED}>Compare by</Text>, ...(['tokens', 'sessions', 'messages'] as const).map(m => choice(`md-${m}`, m[0].toUpperCase() + m.slice(1), by === m, () => act.setView(x => ({ ...x, modelBy: m }))))]))
     const rows = [...cur.byModel.entries()].map(([m, x]) => ({ m, x, n: metricOf(x, by) })).sort((x, y) => y.n - x.n)
     const total = rows.reduce((x, y) => x + y.n, 0) || 1
     for (const r of rows) {
@@ -522,7 +524,7 @@ export const paneTree = (ui: El, a: Agg | null, v: View, pv: PaneView, st: Setti
   if (pv.tab === 'patterns') {
     const by = pv.heat ?? st.heat
     out.push(section('h-hm', 'ACTIVITY HEATMAP', 'one square per day, darker is more', { period: true, help: 'Each square is one day; darker means more of the metric chosen below. Point at a square to see its date and value.' }))
-    out.push(row('hm-m', [<Text key="l" color={MUTED}>Metric</Text>, ...(['tokens', 'sessions', 'messages'] as const).map(m => choice(`hm-${m}`, m, by === m, () => act.setView(x => ({ ...x, heat: m }))))]))
+    out.push(row('hm-m', [<Text key="l" color={MUTED}>Metric</Text>, ...(['tokens', 'sessions', 'messages'] as const).map(m => choice(`hm-${m}`, m[0].toUpperCase() + m.slice(1), by === m, () => act.setView(x => ({ ...x, heat: m }))))]))
     const all = q(addDays(today, -370), today)
     if (Svg) {
       const hm = heatSvg(all.byDay, period === 'today' || period === '7d' || period === '30d' ? addDays(today, -90) : rg.from, today, by, Math.min(cols * 8, 760))
@@ -544,7 +546,7 @@ export const paneTree = (ui: El, a: Agg | null, v: View, pv: PaneView, st: Setti
     out.push(section('h-tp', `TIME PATTERNS · ${PERIOD_LABEL[period]}`, 'local time', { help: 'When you use Claude, by hour and by weekday, in your local time. Hours and weekdays count messages.' }))
     const hourLabels = pt.hours.map((_, h) => String(h).padStart(2, '0'))
     if (Svg) {
-      const hs = histSvg(pt.hours, hourLabels, i => i % 6 === 0, Math.min(cols * 7, 480), 'messages')
+      const hs = histSvg(pt.hours, hourLabels, i => i % 6 === 0, Math.min(cols * 7, 480), 'messages', pt.hours.map((_, h) => `${String(h).padStart(2, '0')}:00 to ${String((h + 1) % 24).padStart(2, '0')}:00`))
       out.push(<Box key="tp-h"><Svg source={hs.source} alt={hs.alt} width={hs.w} height={hs.h} isInteractive /></Box>)
     } else {
       const mx = Math.max(1, ...pt.hours)
@@ -555,13 +557,13 @@ export const paneTree = (ui: El, a: Agg | null, v: View, pv: PaneView, st: Setti
       pt.peakHour >= 0 ? metric('tp-ph', 'Peak hour, messages', HOURS(pt.peakHour)) : null,
       tt.peakHour >= 0 ? metric('tp-pt', 'Peak hour, tokens', HOURS(tt.peakHour)) : null,
       pt.peakDay >= 0 ? metric('tp-pd', 'Peak weekday', DAYS[pt.peakDay], TEXT, 'by messages') : null,
-      metric('tp-m', 'Morning 05-12', pct((pt.parts.morning / sumP) * 100)),
-      metric('tp-a', 'Afternoon 12-17', pct((pt.parts.afternoon / sumP) * 100)),
-      metric('tp-e', 'Evening 17-22', pct((pt.parts.evening / sumP) * 100)),
-      metric('tp-n', 'Night 22-05', pct((pt.parts.night / sumP) * 100)),
+      metric('tp-m', 'Morning (05–12)', pct((pt.parts.morning / sumP) * 100)),
+      metric('tp-a', 'Afternoon (12–17)', pct((pt.parts.afternoon / sumP) * 100)),
+      metric('tp-e', 'Evening (17–22)', pct((pt.parts.evening / sumP) * 100)),
+      metric('tp-n', 'Night (22–05)', pct((pt.parts.night / sumP) * 100)),
     ]))
     if (Svg) {
-      const ws = histSvg(pt.week, DAYS, () => true, Math.min(cols * 7, 300), 'messages')
+      const ws = histSvg(pt.week, DAYS, () => true, Math.min(cols * 7, 300), 'messages', ['Sundays', 'Mondays', 'Tuesdays', 'Wednesdays', 'Thursdays', 'Fridays', 'Saturdays'])
       out.push(<Box key="tp-w" marginTop={1}><Svg source={ws.source} alt={ws.alt} width={ws.w} height={ws.h} isInteractive /></Box>)
     } else {
       const wmx = Math.max(1, ...pt.week)
@@ -576,8 +578,8 @@ export const paneTree = (ui: El, a: Agg | null, v: View, pv: PaneView, st: Setti
     out.push(grid('sp', [
       acts.length ? metric('sp-a', 'Active / session', dur(median(acts)), TEXT, `median · avg ${dur(mean(acts))}`, 'Time spent working: the gaps under 30 minutes between events, added up. Long breaks are left out.') : null,
       metric('sp-t', 'Tokens / session', tok(median(toks)), TEXT, `median · avg ${tok(mean(toks))}`),
-      metric('sp-m', 'Msgs / session', String(Math.round(median(msgs))), TEXT, `median · avg ${Math.round(mean(msgs))}`),
-      metric('sp-b', 'Sessions >100K', String(toks.filter(x => x > 100_000).length), TEXT, undefined, 'Sessions with more than 100K activity tokens in the period.'),
+      metric('sp-m', 'Messages / session', String(Math.round(median(msgs))), TEXT, `median · avg ${Math.round(mean(msgs))}`),
+      metric('sp-b', 'Sessions over 100K', String(toks.filter(x => x > 100_000).length), TEXT, undefined, 'Sessions with more than 100K activity tokens in the period.'),
     ]))
     const longest = [...ss].sort((x, y) => y.x.tokens - x.x.tokens).slice(0, 5)
     if (longest.length) out.push(note1('sp-h', 'Largest sessions in the period:'))
@@ -585,7 +587,7 @@ export const paneTree = (ui: El, a: Agg | null, v: View, pv: PaneView, st: Setti
       out.push(
         <Box key={`sp-${r.sid}`} flexDirection="column">
           <Text color={TEXT}>{r.s.title || r.sid.slice(0, 8)}</Text>
-          <Text color={MUTED}>{`${tok(r.x.tokens)} tokens · ${r.x.messages} msgs · ${dur(r.s.act)} active · ${resolve(r.s.cwd ?? '').name}`}</Text>
+          <Text color={MUTED}>{`${tok(r.x.tokens)} tokens · ${r.x.messages} messages · ${dur(r.s.act)} active · ${resolve(r.s.cwd ?? '').name}`}</Text>
         </Box>,
       )
     }
@@ -634,16 +636,16 @@ export const paneTree = (ui: El, a: Agg | null, v: View, pv: PaneView, st: Setti
     // Each item's real state on the bar right now (the same layout code the bar draws with).
     const lay = st.isOn && bandColumns ? barLayout(v, st, bandColumns) : null
     const SAY: Record<ItemState, [string, string]> = {
-      shown: ['shown', GOOD],
-      off: ['off', EMPTY],
-      density: ['on · hidden in Minimal mode (quotas only)', ORANGE],
-      width: ['on · no room at this width', ORANGE],
-      nodata: ['on · no data yet', MUTED],
+      shown: ['Shown', GOOD],
+      off: ['Off', EMPTY],
+      density: ['On, hidden in Minimal mode (quotas only)', ORANGE],
+      width: ['On, no room at this width', ORANGE],
+      nodata: ['On, no data yet', MUTED],
     }
     for (const it of ITEMS) {
       const on = st.show[it.key]
       const state: ItemState | null = !on ? 'off' : lay ? lay.state[it.key] : null
-      const [text, color] = state ? SAY[state] : ['on', MUTED]
+      const [text, color] = state ? SAY[state] : ['On', MUTED]
       out.push(
         <Box key={`it-${it.key}`} flexDirection="row" flexWrap="wrap" columnGap={1} alignItems="center">
           <Box width={24} flexShrink={0} flexDirection="row">{choice(`sh-${it.key}`, `${on ? '✓' : '○'} ${it.label}`, on, () => act.setSettings(x => ({ ...x, show: { ...x.show, [it.key]: !x.show[it.key] } })))}</Box>
@@ -659,7 +661,7 @@ export const paneTree = (ui: El, a: Agg | null, v: View, pv: PaneView, st: Setti
 
     // ---- 3. Low-quota warning: one choice per quota
     const w = st.warn
-    out.push(group('h-wn', 'LOW-QUOTA WARNING', 'When a quota is low, its figure and the logo turn red. You can also be told'))
+    out.push(group('h-wn', 'LOW-QUOTA WARNING', 'When a quota is low, its figure and the logo turn red. You can also be told about it'))
     for (const [k, label, name] of [['h5', '5H quota', '5-hour'], ['d7', '7D quota', '7-day']] as const) {
       const lvl = w[k] ?? 30
       out.push(setting(`wn-${k}`, label, [
@@ -704,13 +706,12 @@ export const paneTree = (ui: El, a: Agg | null, v: View, pv: PaneView, st: Setti
     }
     const seen = new Map<string, { name: string; source: string }>()
     for (const k in a.rows) { const pr = resolve(k.split('\t')[2]); if (!seen.has(pr.key)) seen.set(pr.key, { name: pr.name, source: pr.source }) }
-    const HOW: Record<string, string> = { alias: 'your alias', git: 'git repository', root: 'folder the session started in', cwd: 'working folder' }
     out.push(<Box key="dp-t" marginTop={1}><Button key="dp-toggle" plain label={`${pv.folders ? 'Hide' : 'Show'} the ${seen.size} project${seen.size === 1 ? '' : 's'} found ${pv.folders ? '▴' : '▾'}`} onPress={() => act.setView(x => ({ ...x, folders: !x.folders }))} /></Box>)
     if (pv.folders) {
       for (const [k, e] of [...seen.entries()].sort()) {
         out.push(
           <Box key={`dp-${k}`} flexDirection="column" marginTop={1}>
-            <Box flexDirection="row"><Text color={TEXT} bold>{e.name}</Text><Text color={MUTED}>{`  named from: ${HOW[e.source] ?? e.source}`}</Text></Box>
+            <Box flexDirection="row"><Text color={TEXT} bold>{e.name}</Text><Text color={MUTED}>{`  named from ${HOW[e.source] ?? e.source}`}</Text></Box>
             <Text color={MUTED}>{k}</Text>
           </Box>,
         )
@@ -723,8 +724,8 @@ export const paneTree = (ui: El, a: Agg | null, v: View, pv: PaneView, st: Setti
       <Button key="refresh" variant="secondary" label="Refresh" onPress={act.refresh} />,
       <Button key="rebuild" variant="secondary" label="Rebuild cache" onPress={act.rebuild} />,
     ], 'Refresh reads what is new since the last read. Rebuild reads every transcript again (a few seconds); use it after moving or renaming folders.'))
-    out.push(note1('dd-s', note ? `Last result: ${note}` : 'Last result: none yet', note.startsWith('refresh failed') ? WARM : TEXT))
-    out.push(note1('dd-n', `Cache ~/.claude/lucelis/cache-a.json + cache-b.json · parser v${a.v} · built ${new Date(a.built).toISOString().slice(0, 16).replace('T', ' ')} UTC${a.parseErrors ? ` · ${a.parseErrors} unreadable lines skipped` : ''}${a.shape ? ` · ${a.shape} replies in an unknown format` : ''}${a.flagged ? ` · ${a.flagged} damaged records excluded` : ''}`))
+    out.push(note1('dd-s', note ? `Last result: ${note}` : 'Last result: none yet.', note.startsWith('Refresh failed') ? WARM : TEXT))
+    out.push(note1('dd-n', `Cache: ~/.claude/lucelis/cache-a.json and cache-b.json · parser v${a.v} · built ${new Date(a.built).toISOString().slice(0, 16).replace('T', ' ')} UTC${a.parseErrors ? ` · ${a.parseErrors} unreadable lines skipped` : ''}${a.shape ? ` · ${a.shape} replies in an unknown format` : ''}${a.flagged ? ` · ${a.flagged} damaged records left out` : ''}`))
     out.push(<Box key="ex-gap" marginTop={1}>{setting('ex1', 'Export', [
       <Button key="export" variant="secondary" label={`Export CSV · ${PERIOD_LABEL[period]}`} onPress={() => act.exportCsv(rg.from, rg.to)} />,
     ], `One row per day, project and model with token counts, for the default period; no conversation text. Saved to ${st.exportDir || 'your Documents folder'}.`)}</Box>)
