@@ -21,7 +21,7 @@ import { claim, due, fileIo, leftOf, levelFor, message, windowId } from './warn'
 // Quota and context come from the engine (session.usage / session.measure). The cache
 // state is inferred by cachewatch.ts from request timing. History comes from the
 // transcripts, read on demand by a read-only extractor (data.ts). Nothing is sent
-// anywhere, no model is called; the one network request is Check for updates (update.ts),
+// anywhere, no model is called; it goes online only for Check for updates (update.ts),
 // made only when the person presses it.
 
 const PANE = 'lucelis'
@@ -237,7 +237,7 @@ async function loadSeen($: EngineInterface, now: number): Promise<Window[]> {
   } catch { return [] }
 }
 
-/** Check for updates: the one network request Lucelis makes, and only on the person's press. */
+/** Check for updates: Lucelis goes online only here, and only on the person's press. */
 async function checkUpdate($: EngineInterface): Promise<void> {
   const installed = await installedVersion($)
   await update($, upd, () => ({ phase: 'checking', installed }))

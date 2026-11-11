@@ -4,7 +4,7 @@ A lightweight usage bar and local activity dashboard for Claude Code on Windows.
 
 Lucelis shows your 5-hour and 7-day quota, prompt-cache state, context usage, current-session activity, next-message cost estimates, and historical project/model analytics directly inside Claude Code.
 
-Everything is processed locally. No telemetry, no analytics server, and no transcript data leaves your machine. The one network request is the optional Check for updates button.
+Everything is processed locally. No telemetry, no analytics server, and no transcript data leaves your machine. It goes online only when you press Check for updates.
 
 Lucelis is an independent community plugin and is not affiliated with Anthropic.
 
