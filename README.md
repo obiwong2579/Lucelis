@@ -33,9 +33,9 @@ Lucelis has three levels. Each one opens the next.
 | `7d 15.2M ↑12%` | All projects, last 7 days, against the 7 days before. |
 | `Fable 5.2` | Current model. |
 
-- **Health colours.** The percentages are green with 70% or more left, yellow from 30%, and red below. Context is coloured by what is left of the window.
+- **Health colours.** The 5H and 7D figures are green with 70% or more left, red at or under your low level (30% by default, set in Settings), and yellow between. Context is green from 70% left, yellow from 30%, red below.
 - **The Lucelis mark** leads the bar in the desktop app. Its two bars draw in while Claude is working on a reply and it is still otherwise. Its glint turns red while a quota is at or under your warning level.
-- **Low-quota warning.** When what is left of the 5-hour or 7-day quota drops to your level (20% by default), Lucelis tells you once for that quota window: a short pop-up in the app, and a Windows notification if you turn that on. With several sessions open, only one of them warns.
+- **Low-quota warning.** When what is left of the 5-hour or 7-day quota drops to your level (30% by default), its figure on the bar and the logo glint turn red, and Lucelis tells you once for that quota window: a short pop-up in the app, and a Windows notification if you turn that on. With several sessions open, only one of them warns.
 - **One or two lines.** On a wide window everything sits on one row; on a narrow one, items that do not fit move to a second row.
 - **Your choice of items.** Every item has its own switch, and Settings tells you why an item is not showing (off, no room, no data yet).
 
@@ -142,7 +142,7 @@ Only one plugin can draw the row above the prompt. If you also run another one t
 - **Display mode.** Minimal: the two quotas. Normal: one row with everything that fits. Detailed: always two rows.
 - **Wrap to a second row.** In Normal mode, items that do not fit the first row move to a second one. On a wide window the bar stays one row.
 - **Lucelis logo.** The logo at the start of the bar. On by default.
-- **Low-quota warning.** On by default. Warning level for 5H and 7D (10, 20 or 30% left; 20% by default), the in-app pop-up (on), a Windows notification (off), and with notifications on, a "quota is back" notification booked for the reset time (off).
+- **Low-quota warning.** On by default. Low level for 5H and 7D (10, 20, 30 or 40% left; 30% by default): at or under it the figure and the logo glint are red. The warning on/off governs only the in-app pop-up (on), a Windows notification (off), and with notifications on, a "quota is back" notification booked for the reset time (off).
 - **Bar background.** Off by default: the bar uses the app's own background and text colour, in light and dark themes. On puts a navy fill behind the bar items.
 - **Compact bar items.** One toggle per item, listed in priority order. Each shows its state: shown, off, hidden by Minimal, no room at this width, or no data yet.
 - **Dashboard.** Default period and heatmap metric.

@@ -20,15 +20,21 @@ export const windowId = (w: Window): string => `${w.kind}@${(w.resetsAt ?? '').s
 /** What is left of a window, 0-100. */
 export const leftOf = (w: Window): number => Math.max(0, Math.min(100, Math.round(100 - w.percentUsed)))
 
+/** The default level, % left: at or under it the bar figure and the glint are red and the pop-up shows. */
+export const DEFAULT_LEVEL = 30
+/** The levels Settings offers. */
+export const LEVELS = [10, 20, 30, 40] as const
+
 /** The warning level for a window kind, or null for a kind that is not warned about. */
-export const levelFor = (kind: string, warn: Settings['warn']): number | null => {
+export const levelFor = (kind: string, warn?: Settings['warn']): number | null => {
   const k = LEVEL[kind]
-  return k ? warn[k] : null
+  return k ? (warn?.[k] ?? DEFAULT_LEVEL) : null
 }
 
-/** Whether any window is at or under its warning level now (the logo's red glint). */
-export const isLow = (windows: readonly Window[], warn: Settings['warn']): boolean =>
-  warn.on && windows.some(w => { const l = levelFor(w.kind, warn); return l !== null && leftOf(w) <= l })
+/** Whether any window is at or under its warning level now (the logo's red glint). The level
+ * colours the bar whether or not the pop-up is on; on/off governs only the pop-up. */
+export const isLow = (windows: readonly Window[], warn?: Settings['warn']): boolean =>
+  windows.some(w => { const l = levelFor(w.kind, warn); return l !== null && leftOf(w) <= l })
 
 /** Claims kept: window id -> who claimed it and when. */
 export type Warned = Record<string, { by: string; at: number }>

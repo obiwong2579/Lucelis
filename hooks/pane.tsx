@@ -16,6 +16,7 @@ import type { View } from './model'
 import type { CostRow } from './prices'
 import { PRICES_AS_OF, PRICES_SOURCE, usd } from './prices'
 import { COLD, DAYS, EMPTY, GOOD, HOURS, INK, LINE, MUTED, ORANGE, WARM, dots, dur, modelName, pct, signed, tok, trend, when } from './fmt'
+import { LEVELS } from './warn'
 
 type El = { Box: any; Text: any; Button: any; Svg?: any; Input?: any }
 type Act = {
@@ -34,7 +35,7 @@ type Act = {
 /** Shown by the "? Terms" toggle: what the figures mean and how sure they are. */
 export const HELP = [
   'Activity tokens = uncached input + cache writes + output. The headline figure for shares, trends and the heatmap. Cache reads are not in it.',
-  'On the bar: "5H 14%" and "7D 7%" are the quota LEFT, "CTX 24%" is the context USED; all three are green with 70% or more left, yellow from 30%, red below; figures in K / M are tokens; "◷" is time since the session started; "7d" is all projects over the last 7 days.',
+  'On the bar: "5H 14%" and "7D 7%" are the quota LEFT, "CTX 24%" is the context USED; all three are green with 70% or more left; 5H and 7D turn red at or under the low level in Settings (30% by default), CTX under 30% left, and are yellow between; figures in K / M are tokens; "◷" is time since the session started; "7d" is all projects over the last 7 days.',
   'Session activity ("Session" on the bar) = the activity tokens of the current session so far.',
   'Project today ("Today" on the bar) = the activity tokens of the current project since local midnight. It is not your account-wide usage.',
   'Output tokens = tokens Claude generated. "468K output" on a session is the total for the whole session so far, not the size of the last reply.',
@@ -588,14 +589,14 @@ export const paneTree = (ui: El, a: Agg | null, v: View, pv: PaneView, st: Setti
     const w = st.warn
     const setWarn = (p: Partial<Settings['warn']>) => act.setSettings(x => ({ ...x, warn: { ...x.warn, ...p } }))
     out.push(section('h-wn', 'LOW-QUOTA WARNING', 'Once per quota window, in one session only'))
+    for (const [k, label] of [['h5', '5H low at'], ['d7', '7D low at']] as const) {
+      out.push(row(`wn-${k}`, [<Text key="l" color={MUTED}>{label}</Text>, ...LEVELS.map(n => choice(`wn-${k}-${n}`, `${n}% left`, w[k] === n, () => setWarn({ [k]: n } as Partial<Settings['warn']>)))]))
+    }
     out.push(setting('wn1', 'Warning', [
       choice('wn-on', 'On', w.on, () => setWarn({ on: true })),
       choice('wn-off', 'Off', !w.on, () => setWarn({ on: false })),
-    ], 'Tells you once when what is left of the 5-hour or 7-day quota drops to the level below. The logo glint stays red while it is low.'))
+    ], 'At or under the level above, the 5H or 7D figure and the logo glint turn red. On: you are also told once per quota window.'))
     if (w.on) {
-      for (const [k, label] of [['h5', '5H warn at'], ['d7', '7D warn at']] as const) {
-        out.push(row(`wn-${k}`, [<Text key="l" color={MUTED}>{label}</Text>, ...[10, 20, 30].map(n => choice(`wn-${k}-${n}`, `${n}% left`, w[k] === n, () => setWarn({ [k]: n } as Partial<Settings['warn']>)))]))
-      }
       out.push(setting('wn2', 'Pop-up in the app', [
         choice('wt-on', 'On', w.toast, () => setWarn({ toast: true })),
         choice('wt-off', 'Off', !w.toast, () => setWarn({ toast: false })),

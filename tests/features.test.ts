@@ -5,10 +5,11 @@ import { expect, mock, test } from 'claude-code/testing'
 import { emptyAgg, ingest, makeResolver, weekRange } from '../hooks/agg'
 import { envelope } from '../hooks/core'
 import { exportName, field, toCsv } from '../hooks/csv'
-import { LOGO, LOGO_LOW, LOGO_WORKING, LOGO_WORKING_LOW, adaptiveLogo, logoFor } from '../hooks/fmt'
+import { compactParts } from '../hooks/bar'
+import { GOOD, LOGO, LOGO_LOW, LOGO_WORKING, LOGO_WORKING_LOW, RED, YELLOW, adaptiveLogo, logoFor, quotaHealth } from '../hooks/fmt'
 import { UPDATE_COMMANDS, compareVersions } from '../hooks/update'
 import type { ClaimIo, Warned } from '../hooks/warn'
-import { claim, due, forgetHandled, isLow, message, prune, windowId } from '../hooks/warn'
+import { DEFAULT_LEVEL, LEVELS, claim, due, forgetHandled, isLow, levelFor, message, prune, windowId } from '../hooks/warn'
 
 const NOW = Date.parse('2026-11-11T10:00:00Z')
 const WARN = { on: true, h5: 20, d7: 20, toast: true, notify: false, back: false }
@@ -113,10 +114,10 @@ const bootWarn = async ($: any, on: any, opts: { warned?: Warned; settings?: unk
 
 test('crossing the level: one pop-up, not repeated in the same window; 7D warns on its own; no notification when off', async ($, on) => {
   const { calls, measure } = await bootWarn($, on)
-  await measure(H5(70), D7(10))
+  await measure(H5(65), D7(10))
   expect(calls.toast.length).toBe(0)
-  await measure(H5(85), D7(10))
-  expect(calls.toast).toEqual(['Lucelis: 5-hour quota 15% left · resets in 2h 30m'])
+  await measure(H5(75), D7(10))
+  expect(calls.toast).toEqual(['Lucelis: 5-hour quota 25% left · resets in 2h 30m'])
   await measure(H5(90), D7(10))
   expect(calls.toast.length).toBe(1)
   await measure(H5(90), D7(85))
@@ -171,6 +172,31 @@ test('the bar draws the low-quota logo when a quota is under its level', async (
   const glyph = JSON.stringify(await band.find({ key: 'glyph' }))
   expect(glyph).toContain('quota low')
   expect(glyph).toContain('working')
+  await band.unmount()
+})
+
+test('one level for the figure, the logo and the warning: 30% left by default, 10-40 offered', async () => {
+  expect(DEFAULT_LEVEL).toBe(30)
+  expect([...LEVELS]).toEqual([10, 20, 30, 40])
+  expect(levelFor('five_hour')).toBe(30)
+  expect(levelFor('seven_day', { ...WARN, d7: 40 })).toBe(40)
+  expect(levelFor('other', WARN)).toBe(null)
+  expect([100, 70, 69, 31, 30, 0].map(n => quotaHealth(n, 30))).toEqual([GOOD, GOOD, YELLOW, YELLOW, RED, RED])
+  expect(quotaHealth(40, 40)).toBe(RED)
+  // The level colours the logo even with the pop-up off.
+  expect(isLow([H5(72)], { ...WARN, on: false, h5: 30 })).toBe(true)
+  // The bar figure turns red exactly where the logo does.
+  const st = { show: { h5: true, d7: true }, warn: { ...WARN, h5: 40, d7: 30 } } as any
+  const v = { quotas: [{ kind: 'five_hour', left: 40, resetIn: null }, { kind: 'seven_day', left: 31, resetIn: null }] } as any
+  const colours = compactParts(v, st).map(p => p.forms[0][1][1])
+  expect(colours).toEqual([RED, YELLOW])
+})
+
+test('with saved settings from before, the bar uses the 30% default', async ($, on) => {
+  const { measure } = await bootWarn($, on, { settings: { isOn: true } })
+  await measure(H5(72), D7(10))
+  const band = await $.ui.mount({ plugin: 'lucelis', surface: 'desktop', component: 'AbovePrompt', props: { hasSurvey: false, isWorking: false, maxRows: 40, bodyColumns: 160, scroll: { offset: 0, bodyRows: 40 }, view: {} } })
+  expect(JSON.stringify(await band.find({ key: 'glyph' }))).toContain('quota low')
   await band.unmount()
 })
 

@@ -2,8 +2,9 @@
 
 ## 1.1.0 — 2026-11-11
 
-- **Low-quota warning.** When what is left of the 5-hour or 7-day quota drops to your level (20% by default), Lucelis tells you once per quota window with a short pop-up, and optionally a Windows notification and a "quota is back" notification at the reset time. Only one open session warns. Settings: on/off, level per quota, pop-up, notification.
+- **Low-quota warning.** When what is left of the 5-hour or 7-day quota drops to your level (30% by default; 10, 20, 30 or 40% offered), Lucelis tells you once per quota window with a short pop-up, and optionally a Windows notification and a "quota is back" notification at the reset time. Only one open session warns. Settings: on/off, level per quota, pop-up, notification.
 - **Logo states.** While Claude works, the logo's two bars draw in one after the other (replacing the breathing glint). While a quota is at or under its warning level, the glint is red. Still otherwise.
+- **One low level.** The 5H and 7D figures on the bar now turn red at the same level as the logo and the warning (was: under 30%), so they never disagree. Green from 70%, yellow between.
 - **This week** on the Overview tab: this week so far against the same days of last week, with busiest day, top project and top model.
 - **Export CSV** in Settings: one row per day, project and model with token counts, for the period shown.
 - **Check for updates** in Settings: the one network request Lucelis makes, only when pressed. A newer version gets its two update commands copied for you to paste; nothing is installed automatically.

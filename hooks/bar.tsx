@@ -11,7 +11,7 @@
 //      Detailed always draws two rows: usage on the first, the session's items on
 //      the second. No item is forced on: a toggle always wins.
 // Labels are as short as they stay clear: "5H 14%" is what is LEFT (green from 70%,
-// yellow from 30%, red below), "CTX 24%" is what is USED, K / M figures are tokens, "Today" is this project.
+// red at or under the low level, yellow between), "CTX 24%" is what is USED, K / M figures are tokens, "Today" is this project.
 //   4. Width: items are placed in priority order (ITEMS below) and the ones that do
 //      not fit are left out; turning an item off gives its room to the next ones.
 // barLayout() reports each item's state, and Settings shows it.
@@ -19,7 +19,7 @@
 import type { Settings } from '../types'
 import { shortProject } from './agg'
 import type { View } from './model'
-import { BG, COLD, EMPTY, INK, LINE, MUTED, adaptiveLogo, logoFor, TEXT, WARM, dots, health, dur, modelName, signed, tok, trend, when } from './fmt'
+import { BG, COLD, EMPTY, INK, LINE, MUTED, adaptiveLogo, logoFor, TEXT, WARM, dots, health, quotaHealth, dur, modelName, signed, tok, trend, when } from './fmt'
 import { levelFor } from './warn'
 import { usd } from './prices'
 
@@ -126,8 +126,9 @@ export const compactParts = (v: View, st: Settings): Part[] => {
     if (item && !show[item]) continue
     const name = QNAME[q.kind] ?? q.kind.toUpperCase()
     // The engine reports what is used; the bar shows what is LEFT. No "left" / "LOW" words:
-    // the figure is green from 70%, yellow from 30%, red below.
-    const core: Seg[] = [[`${name} `, MUTED, true], [`${q.left}%`, health(q.left), true]]
+    // the figure is green from 70%, red at or under the warning level (as the logo), yellow between.
+    const lvl = levelFor(q.kind, st.warn)
+    const core: Seg[] = [[`${name} `, MUTED, true], [`${q.left}%`, lvl === null ? health(q.left) : quotaHealth(q.left, lvl), true]]
     parts.push({ key: q.kind, item, row: 1, prio: isH5 ? 1 : 2, forms: [core] })
     // The reset time is its own part, attached to its quota: placed after cache and context.
     if (show.resets && q.resetIn !== null) {
@@ -210,7 +211,7 @@ export const compactRow = (ui: El, v: View, st: Settings, columns: number, expan
   const top = line(L.rows[0], 'a')
   // Only where the surface draws SVG (not the terminal): no text stand-in, no image hack.
   // The glint turns red while a quota is at or under its warning level; the bars draw in while Claude works.
-  const low = !!st.warn?.on && v.quotas.some(q => { const l = levelFor(q.kind, st.warn); return l !== null && q.left <= l })
+  const low = v.quotas.some(q => { const l = levelFor(q.kind, st.warn); return l !== null && q.left <= l })
   const src = logoFor(working, low)
   const alt = `Lucelis${working ? ', working' : ''}${low ? ', quota low' : ''}`
   if (L.glyph && Svg) top.unshift(<Box key="glyph" marginRight={1} flexShrink={0}><Svg source={st.bg ? src : adaptiveLogo(src)} alt={alt} width={16} height={16} /></Box>)

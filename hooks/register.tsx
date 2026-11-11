@@ -40,7 +40,7 @@ const DEFAULTS: Settings = {
   heat: 'tokens',
   show: { h5: true, d7: true, cache: true, ctx: true, resets: true, today: true, session: true, elapsed: true, trend: true, project: true, model: true },
   aliases: [],
-  warn: { on: true, h5: 20, d7: 20, toast: true, notify: false, back: false },
+  warn: { on: true, h5: 30, d7: 30, toast: true, notify: false, back: false },
   exportDir: '',
 }
 const VIEW: PaneView = { period: null, heat: null, modelBy: 'tokens', project: null, tab: 'overview', help: false }
