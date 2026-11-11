@@ -69,7 +69,13 @@ const L_STROKE = 'stroke="#F5EFE4"'
  * the L follows the theme (ivory on dark, text-dark on light). The stroke attribute stays as
  * the fallback, so a surface that ignores the style still draws the ivory L.
  */
-export const adaptiveLogo = (svg: string): string =>
+const adapted = new Map<string, string>()
+export const adaptiveLogo = (svg: string): string => {
+  let out = adapted.get(svg)
+  if (out === undefined) { out = adapt(svg); if (adapted.size < 16) adapted.set(svg, out) }
+  return out
+}
+const adapt = (svg: string): string =>
   svg.includes(L_STROKE)
     ? svg
         .replace(L_STROKE, `class="l" ${L_STROKE}`)

@@ -73,6 +73,18 @@ const fmtMetric = (n: number, by: 'tokens' | 'sessions' | 'messages') => (by ===
 // redraw (a tab press, the minute tick) does not recompute them.
 const memo = new Map<string, Stats>()
 let memoBuild = -1
+/** Every project the history holds, with where its name came from: once per build and alias set. */
+let found: { at: string; map: Map<string, { name: string; source: string }> } | null = null
+const detected = (a: Agg, resolve: Resolver, sig: string) => {
+  const at = `${a.built}|${sig}`
+  if (found?.at === at) return found.map
+  const map = new Map<string, { name: string; source: string }>()
+  const cwds = new Set<string>()
+  for (const k in a.rows) cwds.add(k.split('\t')[2])
+  for (const c of cwds) { const pr = resolve(c); if (!map.has(pr.key)) map.set(pr.key, { name: pr.name, source: pr.source }) }
+  found = { at, map }
+  return map
+}
 const cachedStats = (a: Agg, resolve: Resolver, sig: string, from: string, to: string, project?: string | null): Stats => {
   if (a.built !== memoBuild || memo.size > 64) { memo.clear(); memoBuild = a.built }
   const k = `${sig}|${from}|${to}|${project ?? ''}`
@@ -704,8 +716,7 @@ export const paneTree = (ui: El, a: Agg | null, v: View, pv: PaneView, st: Setti
         if (m) act.setSettings(x => ({ ...x, aliases: [...(x.aliases ?? []).filter(y => y.path.toLowerCase() !== m[1].trim().toLowerCase()), { path: m[1].trim(), name: m[2].trim() }] }))
       }} /></Box>)
     }
-    const seen = new Map<string, { name: string; source: string }>()
-    for (const k in a.rows) { const pr = resolve(k.split('\t')[2]); if (!seen.has(pr.key)) seen.set(pr.key, { name: pr.name, source: pr.source }) }
+    const seen = detected(a, resolve, sig)
     out.push(<Box key="dp-t" marginTop={1}><Button key="dp-toggle" plain label={`${pv.folders ? 'Hide' : 'Show'} the ${seen.size} project${seen.size === 1 ? '' : 's'} found ${pv.folders ? '▴' : '▾'}`} onPress={() => act.setView(x => ({ ...x, folders: !x.folders }))} /></Box>)
     if (pv.folders) {
       for (const [k, e] of [...seen.entries()].sort()) {

@@ -23,7 +23,7 @@ import type { Settings } from '../types'
 import { shortProject } from './agg'
 import type { View } from './model'
 import { BG, COLD, EMPTY, INK, LINE, MUTED, adaptiveLogo, logoFor, TEXT, WARM, dots, health, quotaHealth, dur, modelName, signed, tok, trend, when } from './fmt'
-import { levelFor } from './warn'
+import { levelFor, lowAt } from './warn'
 import { usd } from './prices'
 
 type El = { Box: any; Text: any; Button: any }
@@ -39,18 +39,18 @@ export type Part = { key: string; prio: number; forms: Seg[][]; after?: string; 
 export type Shown = { key: string; segs: Seg[]; after?: string }
 
 /** The compact bar's items, in priority order (the order Settings lists them in). */
-export const ITEMS: { key: ItemKey; label: string; what: string; nodata: string }[] = [
-  { key: 'h5', label: '5H quota', what: '5-hour quota left', nodata: 'Claude has not reported it yet' },
-  { key: 'd7', label: '7D quota', what: '7-day quota left', nodata: 'Claude has not reported it yet' },
-  { key: 'cache', label: 'Cache', what: 'WARM / COLD and minutes until cold', nodata: 'known after the first reply' },
-  { key: 'ctx', label: 'Context', what: 'context window used', nodata: 'known after the first reply' },
-  { key: 'resets', label: 'Reset times', what: 'time until each quota resets', nodata: 'needs the 5H or 7D quota on, and a reset time from Claude' },
-  { key: 'project', label: 'Project', what: 'current project', nodata: 'no project found' },
-  { key: 'session', label: 'Session activity', what: "this session's activity tokens", nodata: 'no reply recorded yet' },
-  { key: 'today', label: 'Project today', what: "this project's activity tokens today", nodata: 'no history read yet' },
-  { key: 'elapsed', label: 'Elapsed', what: 'time since the session started', nodata: 'start time unknown' },
-  { key: 'trend', label: '7-day trend', what: 'all projects, last 7 days', nodata: 'no history read yet' },
-  { key: 'model', label: 'Model', what: 'current model', nodata: 'model unknown' },
+export const ITEMS: { key: ItemKey; label: string; nodata: string }[] = [
+  { key: 'h5', label: '5H quota', nodata: 'Claude has not reported it yet' },
+  { key: 'd7', label: '7D quota', nodata: 'Claude has not reported it yet' },
+  { key: 'cache', label: 'Cache', nodata: 'known after the first reply' },
+  { key: 'ctx', label: 'Context', nodata: 'known after the first reply' },
+  { key: 'resets', label: 'Reset times', nodata: 'needs the 5H or 7D quota on, and a reset time from Claude' },
+  { key: 'project', label: 'Project', nodata: 'no project found' },
+  { key: 'session', label: 'Session activity', nodata: 'no reply recorded yet' },
+  { key: 'today', label: 'Project today', nodata: 'no history read yet' },
+  { key: 'elapsed', label: 'Elapsed', nodata: 'start time unknown' },
+  { key: 'trend', label: '7-day trend', nodata: 'no history read yet' },
+  { key: 'model', label: 'Model', nodata: 'model unknown' },
 ]
 /** off: toggled off. shown: drawn now. density: on, but this density leaves it out. width: on, no room. nodata: on, nothing to show. */
 export type ItemState = 'off' | 'shown' | 'density' | 'width' | 'nodata'
@@ -226,10 +226,11 @@ export const barLayout = (v: View, st: Settings, columns: number, canGlyph = tru
   return { rows, narrow, state, glyph, tier }
 }
 
-export const compactRow = (ui: El, v: View, st: Settings, columns: number, expanded: boolean, paneOpen: boolean, onMore: () => void, onDetails: () => void, working = false) => {
+/** `layout`: the bar's layout for this draw, when the caller already has it (it is worked out once). */
+export const compactRow = (ui: El, v: View, st: Settings, columns: number, expanded: boolean, paneOpen: boolean, onMore: () => void, onDetails: () => void, working = false, layout?: Layout) => {
   const { Box, Text, Button } = ui
   const Svg = (ui as any).Svg
-  const L = barLayout(v, st, columns, !!Svg)
+  const L = layout ?? barLayout(v, st, columns, !!Svg)
   const line = (shown: Shown[], k: string): any[] => {
     const row: any[] = []
     shown.forEach((p, i) => {
@@ -241,7 +242,7 @@ export const compactRow = (ui: El, v: View, st: Settings, columns: number, expan
   const top = line(L.rows[0], 'a')
   // Only where the surface draws SVG (not the terminal): no text stand-in, no image hack.
   // The bars and glint turn red while a quota is at or under its warning level; the bars draw in while Claude works.
-  const low = v.quotas.some(q => { const l = levelFor(q.kind, st.warn); return !q.stale && !!l && q.left <= l })
+  const low = v.quotas.some(q => !q.stale && lowAt(q.kind, q.left, st.warn))
   const src = logoFor(working, low)
   const state = [working ? 'Claude is working' : '', low ? 'quota low' : ''].filter(Boolean)
   const alt = state.length ? `Lucelis: ${state.join(', ')}` : 'Lucelis'

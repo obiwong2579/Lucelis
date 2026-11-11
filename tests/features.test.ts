@@ -9,7 +9,7 @@ import { compactParts } from '../hooks/bar'
 import { GOOD, LOGO, LOGO_LOW, LOGO_WORKING, LOGO_WORKING_LOW, RED, YELLOW, adaptiveLogo, logoFor, quotaHealth } from '../hooks/fmt'
 import { UPDATE_COMMANDS, compareVersions } from '../hooks/update'
 import type { ClaimIo, Warned } from '../hooks/warn'
-import { DEFAULT_LEVEL, LEVELS, claim, due, forgetHandled, isLow, levelFor, message, prune, windowId } from '../hooks/warn'
+import { DEFAULT_LEVEL, LEVELS, claim, due, forgetHandled, levelFor, lowAt, message, prune, windowId } from '../hooks/warn'
 
 const NOW = Date.parse('2026-11-11T10:00:00Z')
 const WARN = { h5: 20, d7: 20, toast: true, notify: false, back: false }
@@ -40,8 +40,8 @@ test('prune drops windows that have reset; message says what is left and when it
   expect(Object.keys(prune(warned, NOW))).toEqual(['five_hour@2026-11-11T12'])
   expect(message(H5(85), NOW)).toBe('5-hour quota 15% left · resets in 2h 30m')
   expect(message(D7(82), NOW)).toBe('7-day quota 18% left · resets in 2d 22h')
-  expect(isLow([H5(50), D7(81)], WARN)).toBe(true)
-  expect(isLow([H5(50), D7(79)], WARN)).toBe(false)
+  expect(lowAt('seven_day', 19, WARN)).toBe(true)
+  expect(lowAt('seven_day', 21, WARN)).toBe(false)
 })
 
 const memIo = (file: Warned, opts: { onSleep?: (f: Warned) => void; failWrite?: boolean } = {}): ClaimIo & { file: Warned } => {
@@ -203,8 +203,8 @@ test('one level for the figure, the logo and the warning: 30% left by default, 1
   expect(quotaHealth(40, 40)).toBe(RED)
   // Off (0): never red, the logo never low.
   expect([5, 0].map(n => quotaHealth(n, 0))).toEqual([YELLOW, YELLOW])
-  expect(isLow([H5(99)], { h5: 0, d7: 30 })).toBe(false)
-  expect(isLow([H5(72)], { h5: 30, d7: 0 })).toBe(true)
+  expect(lowAt('five_hour', 1, { h5: 0, d7: 30, toast: false, notify: false, back: false })).toBe(false)
+  expect(lowAt('five_hour', 28, { h5: 30, d7: 0, toast: false, notify: false, back: false })).toBe(true)
   // The bar figure turns red exactly where the logo does.
   const st = { show: { h5: true, d7: true }, warn: { ...WARN, h5: 40, d7: 30 } } as any
   const v = { quotas: [{ kind: 'five_hour', left: 40, resetIn: null }, { kind: 'seven_day', left: 31, resetIn: null }] } as any

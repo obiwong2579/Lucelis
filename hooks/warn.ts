@@ -31,10 +31,11 @@ export const levelFor = (kind: string, warn?: Settings['warn']): number | null =
   return k ? (warn?.[k] ?? DEFAULT_LEVEL) : null
 }
 
-/** Whether any window is at or under its warning level now (the logo's red glint). The level
- * is set per quota; 0 turns that quota's red and pop-up off. */
-export const isLow = (windows: readonly Window[], warn?: Settings['warn']): boolean =>
-  windows.some(w => { const l = levelFor(w.kind, warn); return !!l && leftOf(w) <= l })
+/** Whether `left` % of a window kind is at or under its warning level (the red figure and glint). */
+export const lowAt = (kind: string, left: number, warn?: Settings['warn']): boolean => {
+  const l = levelFor(kind, warn)
+  return !!l && left <= l
+}
 
 /** Claims kept: window id -> who claimed it and when. */
 export type Warned = Record<string, { by: string; at: number }>

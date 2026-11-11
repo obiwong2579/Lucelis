@@ -444,11 +444,12 @@ export const register: Register = on => {
     const dashboard = () => { void openPane($, 'overview') }
     const sessionTab = () => { void openPane($, 'session') }
     const compare = () => { void openPane($, 'models') }
-    const hasSecondRow = barLayout(v, st, columns, !!(ui as any).Svg).rows.length > 1
+    const layout = barLayout(v, st, columns, !!(ui as any).Svg)
+    const hasSecondRow = layout.rows.length > 1
     const a = aggNow()
     return (
       <Box flexDirection="column">
-        {compactRow(ui, v, st, columns, isOpen, paneOpen, toggle, details, !!e.props.isWorking)}
+        {compactRow(ui, v, st, columns, isOpen, paneOpen, toggle, details, !!e.props.isWorking, layout)}
         {isOpen ? snapshot(ui, v, columns, a?.tz ?? 0, now, hasSecondRow, sessionTab, compare, dashboard, true) : null}
       </Box>
     )
