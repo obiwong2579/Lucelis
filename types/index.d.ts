@@ -39,6 +39,14 @@ export type Settings = {
   show: { h5: boolean; d7: boolean; cache: boolean; ctx: boolean; resets: boolean; today: boolean; session: boolean; elapsed: boolean; trend: boolean; project: boolean; model: boolean }
   /** Project root -> display name, for when automatic detection is ambiguous. */
   aliases: { path: string; name: string }[]
+  /**
+   * Low-quota warning (1.1.0): warn once per window when what is LEFT of 5H / 7D is at or
+   * under its level. `toast`: the app's pop-up; `notify`: a Windows notification;
+   * `back`: with `notify`, a notification booked for the reset time.
+   */
+  warn: { on: boolean; h5: number; d7: number; toast: boolean; notify: boolean; back: boolean }
+  /** Where CSV exports go; empty: the Documents folder. */
+  exportDir: string
 }
 
 /** What the Activity pane is showing. */
@@ -51,6 +59,9 @@ export type PaneView = {
   /** Show the help text on token terms and the cache clock. */
   help: boolean
 }
+
+/** Where a Check for updates stands (Settings tab). */
+export type UpdateState = { phase: 'idle' | 'checking' | 'latest' | 'newer' | 'failed' | 'copied'; installed: string; latest?: string; detail?: string }
 
 /** The live context window, from session.measure: the engine's own figures. */
 export type Ctx = { tokens: number; window: number; percent: number | null }
@@ -73,6 +84,7 @@ declare module 'claude-code' {
       note: string
       settings: Shaped<Settings>
       view: Shaped<PaneView>
+      update: UpdateState
     }
   }
 }

@@ -7,9 +7,9 @@
 // of fixed-width cells, so a narrow pane gets one column and a wide one several;
 // tables switch to two-line rows when narrow. No inner scroll areas.
 
-import type { PaneView, Settings } from '../types'
+import type { PaneView, Settings, UpdateState } from '../types'
 import type { Agg, Period, Resolver, Slice, Stats } from './agg'
-import { PERIODS, PERIOD_LABEL, addDays, change, daysBetween, firstDay, localDay, makeResolver, mean, median, patterns, rangeOf, stats, streaks, weekday } from './agg'
+import { PERIODS, PERIOD_LABEL, addDays, change, daysBetween, firstDay, localDay, makeResolver, mean, median, patterns, rangeOf, stats, streaks, weekRange, weekday } from './agg'
 import type { ItemState } from './bar'
 import { ITEMS, barLayout } from './bar'
 import type { View } from './model'
@@ -23,6 +23,12 @@ type Act = {
   setSettings: (fn: (s: Settings) => Settings) => void
   refresh: () => void
   rebuild: () => void
+  /** Check for updates (one request to GitHub, only on this press) and its last result. */
+  checkUpdate: () => void
+  copyUpdate: () => void
+  update: UpdateState
+  /** Writes the CSV for the period shown. */
+  exportCsv: (from: string, to: string) => void
 }
 
 /** Shown by the "? Terms" toggle: what the figures mean and how sure they are. */
@@ -246,6 +252,23 @@ export const paneTree = (ui: El, a: Agg | null, v: View, pv: PaneView, st: Setti
       metric('ov-r', 'Cache reads', tok(cur.all.cr), MUTED, `processed ${tok(cur.all.processed)}`),
       topProject ? metric('ov-p', 'Top project', nameOf(topProject[0]), TEXT, cur.all.tokens ? pct((topProject[1].tokens / cur.all.tokens) * 100) : undefined) : null,
       topModel ? metric('ov-md', 'Top model', modelName(topModel[0]), TEXT, cur.all.tokens ? pct((topModel[1].tokens / cur.all.tokens) * 100) : undefined) : null,
+    ]))
+    // This week so far against the same days of last week (Monday start, local dates).
+    const wk = weekRange(today)
+    const tw = q(wk.from, today)
+    const lw = q(wk.prevFrom, addDays(wk.prevFrom, wk.days - 1))
+    const lwAll = q(wk.prevFrom, wk.prevTo)
+    const busiest = [...tw.byDay.entries()].sort((x, y) => y[1].tokens - x[1].tokens)[0]
+    const twProject = [...tw.byProject.entries()].sort((x, y) => y[1].tokens - x[1].tokens)[0]
+    const twModel = [...tw.byModel.entries()].sort((x, y) => y[1].tokens - x[1].tokens)[0]
+    out.push(section('h-wk', 'THIS WEEK', `Monday to today, against the same ${wk.days === 1 ? 'day' : `${wk.days} days`} of last week`))
+    out.push(grid('wk', [
+      metric('wk-t', 'Activity tokens', tok(tw.all.tokens), TEXT, tr(tw.all.tokens, lw.all.tokens) ?? `last week ${tok(lwAll.all.tokens)} in all`),
+      metric('wk-s', 'Sessions', String(tw.all.sessions.size), TEXT, tr(tw.all.sessions.size, lw.all.sessions.size)),
+      metric('wk-d', 'Active days', `${tw.all.days.size} of ${wk.days}`, TEXT, `last week ${lw.all.days.size} of ${wk.days}`),
+      busiest ? metric('wk-b', 'Busiest day', `${DAYS[weekday(busiest[0])]} ${busiest[0].slice(5)}`, TEXT, tok(busiest[1].tokens)) : null,
+      twProject ? metric('wk-p', 'Top project', tw.names.get(twProject[0]) ?? nameOf(twProject[0]), TEXT, tw.all.tokens ? pct((twProject[1].tokens / tw.all.tokens) * 100) : undefined) : null,
+      twModel ? metric('wk-m', 'Top model', modelName(twModel[0]), TEXT, tw.all.tokens ? pct((twModel[1].tokens / tw.all.tokens) * 100) : undefined) : null,
     ]))
     out.push(section('h-da', 'DAILY ACTIVITY', 'activity tokens, last 30 days'))
     const last30 = q(addDays(today, -29), today)
@@ -557,11 +580,37 @@ export const paneTree = (ui: El, a: Agg | null, v: View, pv: PaneView, st: Setti
     out.push(setting('st1d', 'Lucelis logo', [
       choice('lg-on', 'On', !!st.logo, () => act.setSettings(x => ({ ...x, logo: true }))),
       choice('lg-off', 'Off', !st.logo, () => act.setSettings(x => ({ ...x, logo: false }))),
-    ], 'Shows the Lucelis logo at the start of the bar (desktop app). Its glint pulses slowly while Claude is working on a reply.'))
+    ], 'Shows the Lucelis logo at the start of the bar (desktop app). Its bars draw in while Claude is working on a reply, and its glint turns red while a quota is low.'))
     out.push(setting('st1e', 'Bar background', [
       choice('bg-on', 'On', !!st.bg, () => act.setSettings(x => ({ ...x, bg: true }))),
       choice('bg-off', 'Off', !st.bg, () => act.setSettings(x => ({ ...x, bg: false }))),
     ], "On: A navy fill behind the bar items. Off: The bar uses the app's own background and text colour."))
+    const w = st.warn
+    const setWarn = (p: Partial<Settings['warn']>) => act.setSettings(x => ({ ...x, warn: { ...x.warn, ...p } }))
+    out.push(section('h-wn', 'LOW-QUOTA WARNING', 'Once per quota window, in one session only'))
+    out.push(setting('wn1', 'Warning', [
+      choice('wn-on', 'On', w.on, () => setWarn({ on: true })),
+      choice('wn-off', 'Off', !w.on, () => setWarn({ on: false })),
+    ], 'Tells you once when what is left of the 5-hour or 7-day quota drops to the level below. The logo glint stays red while it is low.'))
+    if (w.on) {
+      for (const [k, label] of [['h5', '5H warn at'], ['d7', '7D warn at']] as const) {
+        out.push(row(`wn-${k}`, [<Text key="l" color={MUTED}>{label}</Text>, ...[10, 20, 30].map(n => choice(`wn-${k}-${n}`, `${n}% left`, w[k] === n, () => setWarn({ [k]: n } as Partial<Settings['warn']>)))]))
+      }
+      out.push(setting('wn2', 'Pop-up in the app', [
+        choice('wt-on', 'On', w.toast, () => setWarn({ toast: true })),
+        choice('wt-off', 'Off', !w.toast, () => setWarn({ toast: false })),
+      ], 'A small box at the top right of the conversation for about ten seconds.'))
+      out.push(setting('wn3', 'Windows notification', [
+        choice('wf-on', 'On', w.notify, () => setWarn({ notify: true })),
+        choice('wf-off', 'Off', !w.notify, () => setWarn({ notify: false })),
+      ], 'Also raises a Windows notification, so it reaches you when the app is in the background.'))
+      if (w.notify) {
+        out.push(setting('wn4', 'Quota is back', [
+          choice('wb-on', 'On', w.back, () => setWarn({ back: true })),
+          choice('wb-off', 'Off', !w.back, () => setWarn({ back: false })),
+        ], 'After a warning, books a Windows notification for the moment that quota resets (desktop app only).'))
+      }
+    }
     out.push(section('h-sh', 'COMPACT BAR ITEMS', 'In priority order: placed first, dropped last'))
     // Each item's real state on the bar right now (the same layout code the bar draws with).
     const lay = st.isOn && bandColumns ? barLayout(v, st, bandColumns) : null
@@ -626,7 +675,31 @@ export const paneTree = (ui: El, a: Agg | null, v: View, pv: PaneView, st: Setti
     ]))
     out.push(note1('dd-s', note ? `Last result: ${note}` : 'Last result: none yet', note.startsWith('refresh failed') ? WARM : TEXT))
     out.push(note1('dd-n', `Cache ~/.claude/lucelis/cache-a.json + cache-b.json · parser v${a.v} · built ${new Date(a.built).toISOString().slice(0, 16).replace('T', ' ')} UTC${a.parseErrors ? ` · ${a.parseErrors} unreadable lines skipped` : ''}${a.flagged ? ` · ${a.flagged} damaged records excluded` : ''}`))
-    out.push(note1('dd-p', 'Local-only • No telemetry • No model calls • No external server'))
+    out.push(section('h-ex', 'EXPORT'))
+    out.push(row('ex1', [
+      <Button key="export" variant="secondary" label={`Export CSV · ${PERIOD_LABEL[period]}`} onPress={() => act.exportCsv(rg.from, rg.to)} />,
+    ]))
+    out.push(note1('ex-n', `One row per day, project and model with token counts; no conversation text. Saved to ${st.exportDir || 'your Documents folder'}.`))
+    if (Input) {
+      out.push(<Input key="export-dir" label="Export folder" value={st.exportDir ?? ''} placeholder="C:\Users\you\Documents" submitLabel="Set" onSubmit={(text: string) => act.setSettings(x => ({ ...x, exportDir: text.trim().replace(/[\\/]+$/, '') }))} />)
+    }
+    out.push(section('h-up', 'UPDATES'))
+    const u = act.update
+    out.push(row('up1', [
+      <Text key="v" color={TEXT}>{`Installed: ${u.installed || 'unknown'}`}</Text>,
+      <Button key="check" variant="secondary" label={u.phase === 'checking' ? 'Checking…' : 'Check for updates'} onPress={act.checkUpdate} />,
+      u.phase === 'newer' || u.phase === 'copied' ? <Button key="copy" variant="primary" label="Copy update commands" onPress={act.copyUpdate} /> : null,
+    ]))
+    const UPD: Record<UpdateState['phase'], string> = {
+      idle: 'Asks GitHub for the latest version only when you press the button.',
+      checking: 'Asking GitHub…',
+      latest: `You have the latest version${u.latest ? ` (${u.latest})` : ''}.`,
+      newer: `Version ${u.latest} is available. Press Copy update commands, paste them into the prompt, then start a new session.`,
+      failed: `Could not check: ${u.detail ?? 'no answer'}. Nothing was changed.`,
+      copied: 'Copied. Paste into the prompt and send, then start a new session to load the new version.',
+    }
+    out.push(note1('up-n', UPD[u.phase], u.phase === 'failed' ? WARM : u.phase === 'newer' ? GOOD : MUTED))
+    out.push(note1('dd-p', 'Local-only • No telemetry • No model calls • Network only when you press Check for updates'))
   }
 
   if (pv.tab !== 'settings' && note) out.push(<Box key="foot" marginTop={1}><Text color={MUTED}>{`History: ${note}`}</Text></Box>)

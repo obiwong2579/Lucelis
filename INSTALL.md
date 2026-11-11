@@ -1,6 +1,6 @@
 # Installing Lucelis
 
-Local-only • No telemetry • No model calls • No external server
+Local-only • No telemetry • No model calls • Network only when you press Check for updates
 
 ## Requirements
 

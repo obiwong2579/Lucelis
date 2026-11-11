@@ -500,3 +500,10 @@ export const growth = (ringIn: number[], live: number) => {
 
 /** Percent change from `prev` to `now`, or null when there is no base. */
 export const change = (now: number, prev: number): number | null => (prev > 0 ? ((now - prev) / prev) * 100 : null)
+
+/** The week holding `today`, Monday to Sunday (local dates), the week before, and how many days of this week have begun. */
+export const weekRange = (today: string) => {
+  const off = (weekday(today) + 6) % 7
+  const from = addDays(today, -off)
+  return { from, to: addDays(from, 6), prevFrom: addDays(from, -7), prevTo: addDays(from, -1), days: off + 1 }
+}

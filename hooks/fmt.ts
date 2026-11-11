@@ -23,10 +23,31 @@ export const RED = '#ef5d58'
 /** Health colour of a "what is left" percentage: green 70-100, yellow 30 to under 70, red under 30. */
 export const health = (left: number): string => (left >= 70 ? GOOD : left >= 30 ? YELLOW : RED)
 
-/** The Lucelis mark (rounded L, two reveal bars, glint). Drawn only where the surface has Svg. */
-export const LOGO = '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><path d="M7 5.5 V23.1 Q7 25.5 9.6 25.5 H23.5" fill="none" stroke="#F5EFE4" stroke-width="4.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M14 13.1 H23.1 M14 19.2 H20.4" fill="none" stroke="#7EC9C3" stroke-width="3.1" stroke-linecap="round"/><path d="M25.3 3.7 Q26.2 7.5 29.8 8.4 Q26.2 9.2 25.3 13 Q24.5 9.2 20.9 8.4 Q24.5 7.5 25.3 3.7Z" fill="#D9B46A"/></svg>'
-/** The same mark while Claude is working on a turn: the glint breathes slowly. Still otherwise. */
-export const LOGO_WORKING = '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><path d="M7 5.5 V23.1 Q7 25.5 9.6 25.5 H23.5" fill="none" stroke="#F5EFE4" stroke-width="4.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M14 13.1 H23.1 M14 19.2 H20.4" fill="none" stroke="#7EC9C3" stroke-width="3.1" stroke-linecap="round"/><path transform-origin="25.3 8.4" d="M25.3 3.7 Q26.2 7.5 29.8 8.4 Q26.2 9.2 25.3 13 Q24.5 9.2 20.9 8.4 Q24.5 7.5 25.3 3.7Z" fill="#D9B46A"><animate attributeName="opacity" values="1;0.3;1" dur="1.8s" repeatCount="indefinite"/><animateTransform attributeName="transform" type="scale" values="1;0.82;1" dur="1.8s" repeatCount="indefinite" additive="sum"/></path></svg>'
+const SVG_OPEN = '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">'
+const L_PATH = '<path d="M7 5.5 V23.1 Q7 25.5 9.6 25.5 H23.5" fill="none" stroke="#F5EFE4" stroke-width="4.6" stroke-linecap="round" stroke-linejoin="round"/>'
+const BARS_STILL = '<path d="M14 13.1 H23.1 M14 19.2 H20.4" fill="none" stroke="#7EC9C3" stroke-width="3.1" stroke-linecap="round"/>'
+/** Working: each teal bar draws in from the left, one after the other, holds, then fades back (2.6 s). */
+const BARS_REVEAL =
+  '<path d="M14 13.1 H23.1" fill="none" stroke="#7EC9C3" stroke-width="3.1" stroke-linecap="round" pathLength="1" stroke-dasharray="1 2">' +
+  '<animate attributeName="stroke-dashoffset" values="1;0;0;0" keyTimes="0;0.35;0.85;1" dur="2.6s" repeatCount="indefinite"/>' +
+  '<animate attributeName="opacity" values="1;1;1;0" keyTimes="0;0.35;0.85;1" dur="2.6s" repeatCount="indefinite"/></path>' +
+  '<path d="M14 19.2 H20.4" fill="none" stroke="#7EC9C3" stroke-width="3.1" stroke-linecap="round" pathLength="1" stroke-dasharray="1 2">' +
+  '<animate attributeName="stroke-dashoffset" values="1;1;0;0;0" keyTimes="0;0.25;0.6;0.85;1" dur="2.6s" repeatCount="indefinite"/>' +
+  '<animate attributeName="opacity" values="1;1;1;0" keyTimes="0;0.35;0.85;1" dur="2.6s" repeatCount="indefinite"/></path>'
+const glint = (fill: string) => `<path d="M25.3 3.7 Q26.2 7.5 29.8 8.4 Q26.2 9.2 25.3 13 Q24.5 9.2 20.9 8.4 Q24.5 7.5 25.3 3.7Z" fill="${fill}"/>`
+const mark = (bars: string, glintFill: string) => `${SVG_OPEN}${L_PATH}${bars}${glint(glintFill)}</svg>`
+
+/** The Lucelis mark (rounded L, two reveal bars, glint). Drawn only where the surface has Svg. Still. */
+export const LOGO = mark(BARS_STILL, '#D9B46A')
+/** While Claude is working on a turn: the bars draw in, one after the other. Still otherwise. */
+export const LOGO_WORKING = mark(BARS_REVEAL, '#D9B46A')
+/** A quota at or under its warning level: the glint turns red. No motion of its own. */
+export const LOGO_LOW = mark(BARS_STILL, '#ef5d58')
+/** Low quota while working: the bars draw in and the glint stays red. */
+export const LOGO_WORKING_LOW = mark(BARS_REVEAL, '#ef5d58')
+/** The mark for a state: idle or working, quota fine or low. */
+export const logoFor = (working: boolean, low: boolean): string =>
+  working ? (low ? LOGO_WORKING_LOW : LOGO_WORKING) : (low ? LOGO_LOW : LOGO)
 
 /** The L's colour on a light app theme, when the bar has no background of its own: a text-dark. */
 export const LOGO_ON_LIGHT = '#1f2328'

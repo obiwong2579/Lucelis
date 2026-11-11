@@ -1,14 +1,18 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { Ctx, Live, PaneView, Settings, TurnFacts, Window } from '../types'
+import type { Ctx, Live, PaneView, Settings, TurnFacts, UpdateState, Window } from '../types'
 import { barLayout, compactRow, snapshot } from './bar'
 import type { CacheWatch } from './cachewatch'
 import { contextMeasured, requestSent, sessionReturned, turnEnded } from './cachewatch'
-import { aggNow, ensureLoaded, refresh } from './data'
+import { exportName, toCsv } from './csv'
+import { aggNow, ensureLoaded, paths, refresh } from './data'
+import { localDay, makeResolver } from './agg'
 import { MUTED } from './fmt'
 import { view } from './model'
 import { TAB_LABEL, paneTree } from './pane'
+import { UPDATE_COMMANDS, compareVersions, installedVersion, latestVersion } from './update'
+import { claim, due, fileIo, leftOf, levelFor, message, windowId } from './warn'
 
 // Lucelis: a bar above the prompt (5H / 7D quota, prompt cache, context, the current
 // session, today's project usage) that opens into a session summary, plus the Lucelis
@@ -17,7 +21,8 @@ import { TAB_LABEL, paneTree } from './pane'
 // Quota and context come from the engine (session.usage / session.measure). The cache
 // state is inferred by cachewatch.ts from request timing. History comes from the
 // transcripts, read on demand by a read-only extractor (data.ts). Nothing is sent
-// anywhere; no model is called.
+// anywhere, no model is called; the one network request is Check for updates (update.ts),
+// made only when the person presses it.
 
 const PANE = 'lucelis'
 /** What a command answers when it could not run. */
@@ -35,6 +40,8 @@ const DEFAULTS: Settings = {
   heat: 'tokens',
   show: { h5: true, d7: true, cache: true, ctx: true, resets: true, today: true, session: true, elapsed: true, trend: true, project: true, model: true },
   aliases: [],
+  warn: { on: true, h5: 20, d7: 20, toast: true, notify: false, back: false },
+  exportDir: '',
 }
 const VIEW: PaneView = { period: null, heat: null, modelBy: 'tokens', project: null, tab: 'overview', help: false }
 
@@ -48,6 +55,7 @@ const settings = atom({ plugin: 'lucelis', key: 'settings' } as const, DEFAULTS,
 const rev = atom({ plugin: 'lucelis', key: 'rev' } as const, 0)
 const note = atom({ plugin: 'lucelis', key: 'note' } as const, '')
 const paneView = atom({ plugin: 'lucelis', key: 'view' } as const, VIEW, { shape: 'view-2' })
+const upd = atom({ plugin: 'lucelis', key: 'update' } as const, { phase: 'idle', installed: '' } as UpdateState)
 
 /** The usage windows as plain values the state can hold (the engine's list is read-only). */
 const plainWindows = (list: readonly Window[]): Window[] => {
@@ -62,7 +70,7 @@ const ctxOf = (c: { tokens?: number; window: number; percent?: number }): Ctx | 
 async function loadSettings($: EngineInterface): Promise<Settings> {
   const s = (await $.store.get('settings')) as Partial<Settings> | undefined
   return s && typeof s === 'object'
-    ? { ...DEFAULTS, ...s, show: { ...DEFAULTS.show, ...(s.show ?? {}) }, aliases: Array.isArray(s.aliases) ? s.aliases : [] }
+    ? { ...DEFAULTS, ...s, show: { ...DEFAULTS.show, ...(s.show ?? {}) }, warn: { ...DEFAULTS.warn, ...(s.warn ?? {}) }, aliases: Array.isArray(s.aliases) ? s.aliases : [] }
     : DEFAULTS
 }
 
@@ -131,6 +139,88 @@ async function sync($: EngineInterface, full = false): Promise<string> {
   }
 }
 
+/** The surface the band last drew on: a reset-time notification is booked only from the desktop app. */
+let lastSurface: string | null = null
+/** "Quota is back" notifications this session booked: window kind -> the window it was for. */
+const booked = new Map<string, string>()
+
+/**
+ * Low-quota warning (warn.ts): one session claims each window that dropped to its level and
+ * warns: the app's pop-up, and a Windows notification if the person turned that on. Never
+ * throws, never awaited before the event goes on.
+ */
+async function checkWarn($: EngineInterface, list: readonly Window[]): Promise<void> {
+  try {
+    const st = await read($, settings)
+    const w = st.warn ?? DEFAULTS.warn
+    // A booked "quota is back" that is no longer right (a new window, or it recovered early) is taken back.
+    for (const [kind, id] of [...booked]) {
+      const now = list.find(x => x.kind === kind)
+      const lvl = levelFor(kind, w) ?? 0
+      if (!now || windowId(now) !== id || leftOf(now) > lvl + 10 || !(w.notify && w.back)) {
+        booked.delete(kind)
+        try { await $.ui.cancelNotify(`lucelis-back-${kind}`) } catch { /* no host */ }
+      }
+    }
+    if (!w.on || !due(list, w, {}).length) return
+    const lv = await read($, live)
+    const now = await $.clock.now()
+    const won = await claim(fileIo($, `${(await paths($)).dir}\\warned.json`), lv?.sid ?? 'unknown', now, list, w)
+    for (const x of won) {
+      const text = message(x, now)
+      if (w.toast) { try { await $.ui.toast(`Lucelis: ${text}`, { timeoutMs: 10_000 }) } catch { /* no surface */ } }
+      if (w.notify) {
+        try { await $.ui.notify(text, { title: 'Lucelis', key: `lucelis-low-${windowId(x)}` }) } catch { /* turned off */ }
+        const at = x.resetsAt ? Date.parse(x.resetsAt) : NaN
+        if (w.back && lastSurface === 'desktop' && !Number.isNaN(at) && at > now) {
+          try {
+            await $.ui.notify(`Your ${x.kind === 'five_hour' ? '5-hour' : '7-day'} quota has reset.`, { title: 'Lucelis', key: `lucelis-back-${x.kind}`, at })
+            booked.set(x.kind, windowId(x))
+          } catch { /* not booked */ }
+        }
+      }
+    }
+  } catch { /* a warning never holds the session up */ }
+}
+
+/** Check for updates: the one network request Lucelis makes, and only on the person's press. */
+async function checkUpdate($: EngineInterface): Promise<void> {
+  const installed = await installedVersion($)
+  await update($, upd, () => ({ phase: 'checking', installed }))
+  try {
+    const latest = await latestVersion($)
+    const newer = !!installed && compareVersions(latest, installed) > 0
+    await update($, upd, () => ({ phase: newer ? 'newer' : 'latest', installed, latest }))
+  } catch (err) {
+    await update($, upd, () => ({ phase: 'failed', installed, detail: String((err as Error)?.message ?? err).slice(0, 120) }))
+  }
+}
+
+/** Puts the two update commands on the clipboard; Lucelis never runs them itself. */
+async function copyUpdate($: EngineInterface): Promise<void> {
+  let ok = false
+  try { ok = (await $.ui.copy({ text: UPDATE_COMMANDS })).isCopied } catch { ok = false }
+  if (ok) await update($, upd, u => ({ ...u, phase: 'copied' }))
+  else { try { await $.ui.toast(`Lucelis: copy did not work. Type these into the prompt: ${UPDATE_COMMANDS.replace('\n', '  then  ')}`, { timeoutMs: 15_000 }) } catch { /* no surface */ } }
+}
+
+/** Writes the CSV for [from, to] to the export folder and says where. */
+async function exportCsv($: EngineInterface, from: string, to: string): Promise<void> {
+  try {
+    const a = aggNow()
+    if (!a) { await $.ui.toast('Lucelis export: no history read yet. Press Refresh first.'); return }
+    const st = await read($, settings)
+    const home = (await $.env.get('USERPROFILE')) || (await $.env.get('HOME')) || ''
+    const dir = (st.exportDir || `${home}\\Documents`).replace(/[\\/]+$/, '')
+    const { text, rows } = toCsv(a, makeResolver(a, st.aliases ?? []), from, to)
+    const path = `${dir}\\${exportName(localDay(await $.clock.now(), a.tz))}`
+    await $.fs.write(path, text)
+    await $.ui.toast(`Lucelis export: ${rows} rows saved to ${path}`, { timeoutMs: 10_000 })
+  } catch (err) {
+    try { await $.ui.toast(`Lucelis export failed: ${String((err as Error)?.message ?? err).slice(0, 160)}`, { timeoutMs: 10_000 }) } catch { /* no surface */ }
+  }
+}
+
 /** After a turn: sync at most once a minute; a skipped one runs once when the minute is up. */
 async function syncSoon($: EngineInterface): Promise<void> {
   const wait = lastRun + THROTTLE_MS - (await $.clock.now())
@@ -165,7 +255,11 @@ export const register: Register = on => {
   })
 
   on('session.measure', async ($, e, next) => {
-    if (e.changed.includes('rateLimits')) await update($, windows, () => plainWindows(e.rateLimits))
+    if (e.changed.includes('rateLimits')) {
+      const list = plainWindows(e.rateLimits)
+      await update($, windows, () => list)
+      void checkWarn($, list)
+    }
     if (e.changed.includes('context')) {
       const c = ctxOf(e.context)
       if (c) {
@@ -245,6 +339,7 @@ export const register: Register = on => {
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     if (e.props.hasSurvey) return next(e)
+    lastSurface = e.surface ?? lastSurface
     const st = await read($, settings)
     if (!st.isOn) return next(e)
     const ui = $.ui.resolve(e)
@@ -316,6 +411,10 @@ export const register: Register = on => {
       setSettings,
       refresh: () => { void sync($).then(m => $.ui.toast(`Lucelis refresh: ${m}`)).catch(() => undefined) },
       rebuild: () => { void sync($, true).then(m => $.ui.toast(`Lucelis rebuild: ${m}`)).catch(() => undefined) },
+      checkUpdate: () => { void checkUpdate($) },
+      copyUpdate: () => { void copyUpdate($) },
+      update: await read($, upd),
+      exportCsv: (from, to) => { void exportCsv($, from, to) },
     })
   })
 
