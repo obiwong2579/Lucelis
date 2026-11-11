@@ -5,6 +5,8 @@ import type { EngineInterface } from 'claude-code'
 // commands copied for the person to paste into the prompt.
 
 export const LATEST_URL = 'https://raw.githubusercontent.com/obiwong2579/Lucelis/main/.claude-plugin/plugin.json'
+/** The published notes, read only after a check found a newer version, to say what it brings. */
+export const LATEST_NOTES_URL = 'https://raw.githubusercontent.com/obiwong2579/Lucelis/main/CHANGELOG.md'
 export const UPDATE_COMMANDS = '/plugin marketplace update lucelis\n/plugin update lucelis@lucelis'
 export const NOTES_URL = 'https://github.com/obiwong2579/Lucelis/blob/main/CHANGELOG.md'
 const TIMEOUT_MS = 10_000
@@ -57,4 +59,13 @@ export const whatsNew = (changelog: string, version: string, max = 110): string 
   const leads = body.map(b => /^\*\*(.+?)\*\*/.exec(b)?.[1].replace(/[.:]\s*$/, '')).filter((x): x is string => !!x)
   const text = leads.length ? leads.join(', ') : (body[0] ?? '').replace(/\*\*/g, '')
   return text.length > max ? text.slice(0, max - 1).replace(/[\s,]+\S*$/, '') + '…' : text
+}
+
+/** What a newer version brings, from its published notes ("Low-quota warning, Logo, ..."); '' if they cannot be read. */
+export async function latestNotes($: EngineInterface, version: string): Promise<string> {
+  try {
+    const timeout = $.clock.sleep(TIMEOUT_MS).then(() => { throw new Error('timeout') })
+    const r = await Promise.race([$.http.fetch(LATEST_NOTES_URL, { headers: { accept: 'text/plain' } }), timeout])
+    return r.ok ? whatsNew(r.text, version, 160) : ''
+  } catch { return '' }
 }

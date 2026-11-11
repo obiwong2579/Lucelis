@@ -65,7 +65,8 @@ export type PaneView = {
 }
 
 /** Where a Check for updates stands (About Lucelis, on Overview). */
-export type UpdateState = { phase: 'idle' | 'checking' | 'latest' | 'newer' | 'failed' | 'copied'; installed: string; latest?: string; detail?: string }
+/** `notes`: what a newer version brings, from its published changelog. */
+export type UpdateState = { phase: 'idle' | 'checking' | 'latest' | 'newer' | 'failed' | 'copied'; installed: string; latest?: string; detail?: string; notes?: string }
 
 /** The quiet "Updated to X" line on Overview after an update: one session, until dismissed. */
 export type News = { version: string; summary: string; copied: boolean }

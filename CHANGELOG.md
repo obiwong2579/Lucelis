@@ -7,7 +7,7 @@
 - **One low level.** The 5H and 7D figures on the bar now turn red at the same level as the logo and the warning (was: under 30%), so they never disagree. Green from 70%, yellow between.
 - **This week** on the Overview tab: this week so far against the same days of last week, with busiest day, top project and top model.
 - **Export CSV** in Settings: one row per day, project and model with token counts, for the period shown.
-- **Check for updates** under About Lucelis, at the bottom of Overview: the one network request Lucelis makes, only when pressed. A newer version gets its two update commands copied for you to paste; nothing is installed automatically.
+- **Check for updates** under About Lucelis, at the bottom of Overview: the only time Lucelis goes online, and only when pressed. When a newer version is out, the button becomes Update to X.Y.Z, says what that version brings, and copies the two update commands for you to paste; nothing is installed automatically.
 - **What's new.** After an update, About Lucelis names the main changes, from the notes shipped with the plugin. Full notes copies the link; Dismiss hides it. Never a pop-up.
 - **Last seen.** After a restart, the last 5H and 7D figures show dimmed and marked "last seen" until the first reply, while their window lasts. Never coloured or warned about.
 - **Tight bar.** On a narrow window the bar shortens its items (no % signs, then one-letter labels) before it leaves out 5H, 7D, cache or context.

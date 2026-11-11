@@ -154,7 +154,7 @@ Only one plugin can draw the row above the prompt. If you also run another one t
 - **Dashboard.** Default period and heatmap metric.
 - **Project aliases.** `C:\path\to\folder => Name` maps a folder and everything under it to one project. An alias named like an existing project joins it.
 - **Export.** **Export CSV** saves one row per day, project and model (token counts, responses, sessions; no conversation text) for the period shown, to your Documents folder or a folder you set. It opens in Excel.
-- **Updates.** Under About Lucelis at the bottom of Overview, **Check for updates** asks GitHub for the latest version number, only when you press it. If a newer one is out, **Copy update commands** puts the two update commands on your clipboard to paste into the prompt; Lucelis never installs anything itself.
+- **Updates.** Under About Lucelis at the bottom of Overview, **Check for updates** asks GitHub for the latest version number, only when you press it. If a newer one is out, the button becomes **Update to X.Y.Z**, with what that version brings underneath. Pressing it puts the two update commands on your clipboard to paste into the prompt; Lucelis never installs anything itself.
 
 A good everyday setup: Normal, Wrap to a second row on, and 5H, 7D, Cache, Context and Reset times on. Add the rest to taste.
 
@@ -179,7 +179,7 @@ They cover the input side only and exclude your new message and all output. Pric
 
 **Local-only • No telemetry • No model calls • Network only when you press Check for updates**
 
-Lucelis calls no model and has no telemetry. It makes no network request on its own. The one exception is the **Check for updates** button (About Lucelis, at the bottom of Overview): only when you press it, Lucelis downloads the public file `https://raw.githubusercontent.com/obiwong2579/Lucelis/main/.claude-plugin/plugin.json` to read the latest version number. Nothing about you or your usage is sent.
+Lucelis calls no model and has no telemetry. It makes no network request on its own. The one exception is the **Check for updates** button (About Lucelis, at the bottom of Overview): only when you press it, Lucelis downloads the public file `https://raw.githubusercontent.com/obiwong2579/Lucelis/main/.claude-plugin/plugin.json` to read the latest version number, and if that version is newer, the public `CHANGELOG.md` beside it to say what it brings. Nothing about you or your usage is sent.
 
 | It reads | Why |
 |---|---|

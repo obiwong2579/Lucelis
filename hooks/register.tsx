@@ -11,7 +11,7 @@ import { localDay, makeResolver } from './agg'
 import { MUTED } from './fmt'
 import { view } from './model'
 import { TAB_LABEL, paneTree } from './pane'
-import { NOTES_URL, UPDATE_COMMANDS, compareVersions, installedVersion, latestVersion, whatsNew } from './update'
+import { NOTES_URL, UPDATE_COMMANDS, compareVersions, installedVersion, latestNotes, latestVersion, whatsNew } from './update'
 import { claim, due, fileIo, leftOf, levelFor, message, windowId } from './warn'
 
 // Lucelis: a bar above the prompt (5H / 7D quota, prompt cache, context, the current
@@ -244,7 +244,9 @@ async function checkUpdate($: EngineInterface): Promise<void> {
   try {
     const latest = await latestVersion($)
     const newer = !!installed && compareVersions(latest, installed) > 0
-    await update($, upd, () => ({ phase: newer ? 'newer' : 'latest', installed, latest }))
+    // A newer version: one more request, for its notes, so the Update button can say what it brings.
+    const notes = newer ? await latestNotes($, latest) : ''
+    await update($, upd, () => ({ phase: newer ? 'newer' : 'latest', installed, latest, notes }))
   } catch (err) {
     await update($, upd, () => ({ phase: 'failed', installed, detail: String((err as Error)?.message ?? err).slice(0, 120) }))
   }

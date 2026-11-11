@@ -103,7 +103,11 @@ const bootWarn = async ($: any, on: any, opts: { warned?: Warned; settings?: unk
   on('ui.toast', (_: any, e: any) => { calls.toast.push(e.text); return { value: undefined } })
   on('ui.notify', (_: any, e: any) => { calls.notify.push(e); return { value: { isSent: true, channel: 'client' } } })
   on('ui.cancelNotify', (_: any, e: any) => { calls.cancel.push(e.key); return { value: { isSent: true } } })
-  on('http.fetch', (_: any, e: any) => { calls.fetch.push(e.url); return { value: { headers: {}, ...(opts.fetch ?? { status: 200, ok: true, text: '{"version":"9.9.9"}' }) } } })
+  on('http.fetch', (_: any, e: any) => {
+    calls.fetch.push(e.url)
+    if (String(e.url).endsWith('CHANGELOG.md') && !opts.fetch) return { value: { headers: {}, status: 200, ok: true, text: '# Changelog\n\n## 9.9.9 — 2027-01-01\n\n- **Faster bar.** Text.\n- **New tab.** Text.\n' } }
+    return { value: { headers: {}, ...(opts.fetch ?? { status: 200, ok: true, text: '{"version":"9.9.9"}' }) } }
+  })
   on('ui.copy', (_: any, e: any) => { calls.copied.push(e.text); return { value: { isCopied: true } } })
   on('session.measure', (_: any, e: any) => ({ changed: e.changed }))
   on('classic.SessionStart', () => ({}))
@@ -229,7 +233,7 @@ test('versions compare by number; a pre-release is below its release', async () 
 
 const PANE = { plugin: 'lucelis', surface: 'desktop', component: 'Pane', requestId: 'lucelis', props: { title: 'Lucelis', isFocused: false, bodyColumns: 80, placement: 'dock', scroll: { offset: 0, bodyRows: 60 }, view: {} } } as const
 
-test('no network at all until Check for updates is pressed; then one request, and a newer version offers the commands', async ($, on) => {
+test('no network at all until Check for updates is pressed; a newer version turns the button into Update to X with what X brings', async ($, on) => {
   const { calls, clock, measure } = await bootWarn($, on, { history: true })
   await measure(H5(10))
   const band = await $.ui.mount({ plugin: 'lucelis', surface: 'desktop', component: 'AbovePrompt', props: { hasSurvey: false, isWorking: false, maxRows: 40, bodyColumns: 120, scroll: { offset: 0, bodyRows: 40 }, view: {} } })
@@ -239,11 +243,15 @@ test('no network at all until Check for updates is pressed; then one request, an
   expect(calls.fetch.length).toBe(0)
   await pane.press({ key: 'check' })
   await clock.settle()
-  expect(calls.fetch).toEqual(['https://raw.githubusercontent.com/obiwong2579/Lucelis/main/.claude-plugin/plugin.json'])
-  expect(await pane.find({ text: /Version 9\.9\.9 is available/ })).toBeDefined()
-  await pane.press({ key: 'copy' })
+  // The version, then (only because it is newer) its notes.
+  expect(calls.fetch).toEqual(['https://raw.githubusercontent.com/obiwong2579/Lucelis/main/.claude-plugin/plugin.json', 'https://raw.githubusercontent.com/obiwong2579/Lucelis/main/CHANGELOG.md'])
+  // The same button now says what it updates to, and what that version brings.
+  expect((await pane.find({ key: 'check' }))?.props.label).toBe('Update to 9.9.9')
+  expect(await pane.find({ text: 'What 9.9.9 brings: Faster bar, New tab.' })).toBeDefined()
+  expect(await pane.find({ text: /Lucelis 9\.9\.9 is available \(you have 1\.1\.0\)/ })).toBeDefined()
+  await pane.press({ key: 'check' })
   expect(calls.copied).toEqual([UPDATE_COMMANDS])
-  expect(calls.fetch.length).toBe(1)
+  expect(calls.fetch.length).toBe(2) // pressing Update makes no request
   await pane.unmount()
   await band.unmount()
 })
@@ -254,7 +262,7 @@ test('a failed check says so and changes nothing', async ($, on) => {
   await pane.press({ key: 'check' })
   await clock.settle()
   expect(await pane.find({ text: /Could not check: GitHub answered 404/ })).toBeDefined()
-  expect(await pane.find({ key: 'copy' })).toBeUndefined()
+  expect((await pane.find({ key: 'check' }))?.props.label).toBe('Check for updates')
   expect(await pane.find({ text: /^Lucelis 1\.1\.0$/ })).toBeDefined()
   await pane.unmount()
 })

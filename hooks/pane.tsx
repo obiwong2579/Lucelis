@@ -742,16 +742,22 @@ export const paneTree = (ui: El, a: Agg | null, v: View, pv: PaneView, st: Setti
   function about() {
     out.push(section('h-ab', 'ABOUT LUCELIS', 'Version, updates and what is new', { gap: 2 }))
     const u = act.update
+    // One button: Check for updates; once a check finds a newer version it becomes Update to X,
+    // with what X brings underneath. Lucelis never installs anything itself: Update copies the
+    // two commands that do, for the person to paste.
+    const found = u.phase === 'newer' || u.phase === 'copied'
     out.push(row('up1', [
       <Text key="v" color={TEXT} bold>{`Lucelis ${u.installed || ''}`.trim()}</Text>,
-      <Button key="check" variant="secondary" label={u.phase === 'checking' ? 'Checking…' : 'Check for updates'} onPress={act.checkUpdate} />,
-      u.phase === 'newer' || u.phase === 'copied' ? <Button key="copy" variant="primary" label="Copy update commands" onPress={act.copyUpdate} /> : null,
+      found
+        ? <Button key="check" variant="primary" label={`Update to ${u.latest}`} onPress={act.copyUpdate} />
+        : <Button key="check" variant="secondary" label={u.phase === 'checking' ? 'Checking…' : 'Check for updates'} onPress={act.checkUpdate} />,
     ]))
+    if (found) out.push(note1('up-w', `What ${u.latest} brings: ${u.notes ? `${u.notes}.` : 'see the full notes.'}`, TEXT))
     const UPD: Record<UpdateState['phase'], string> = {
       idle: 'Check for updates asks GitHub for the latest version number, only when you press it.',
       checking: 'Asking GitHub…',
       latest: `You have the latest version${u.latest ? ` (${u.latest})` : ''}.`,
-      newer: `Version ${u.latest} is available. Press Copy update commands, paste them into the prompt, then start a new session.`,
+      newer: `Lucelis ${u.latest} is available (you have ${u.installed}). Update copies the two commands that install it: paste them into the prompt and send, then start a new session.`,
       failed: `Could not check: ${u.detail ?? 'no answer'}. Nothing was changed.`,
       copied: 'Copied. Paste into the prompt and send, then start a new session to load the new version.',
     }
