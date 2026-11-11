@@ -1,7 +1,7 @@
 {
   "name": "lucelis",
   "metadata": {
-    "description": "Lucelis for Claude Code: a local-only usage bar and activity dashboard for Windows.",
+    "description": "Lucelis for Claude Code: a local-first usage bar and activity dashboard for Windows.",
     "version": "1.1.0"
   },
   "owner": {
@@ -11,7 +11,7 @@
     {
       "name": "lucelis",
       "source": "./",
-      "description": "Lucelis for Claude Code: usage bar, session summary and local activity dashboard for Windows. Local-only, no telemetry, no model calls; network only when you press Check for updates.",
+      "description": "Lucelis for Claude Code: usage bar, session summary and local activity dashboard for Windows. Local-first, no telemetry, no model calls; network only when you check for updates.",
       "author": {
         "name": "obiwong2579"
       },

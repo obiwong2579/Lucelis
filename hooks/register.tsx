@@ -12,7 +12,7 @@ import { MUTED } from './fmt'
 import { view } from './model'
 import { TAB_LABEL, paneTree } from './pane'
 import { NOTES_URL, UPDATE_COMMANDS, compareVersions, installedVersion, latestNotes, latestVersion, whatsNew } from './update'
-import { claim, due, fileIo, leftOf, levelFor, message, windowId } from './warn'
+import { claim, claimIo, due, leftOf, levelFor, message, resetMs, windowId } from './warn'
 
 // Lucelis: a bar above the prompt (5H / 7D quota, prompt cache, context, the current
 // session, today's project usage) that opens into a session summary, plus the Lucelis
@@ -152,8 +152,9 @@ const booked = new Map<string, string>()
 
 /**
  * Low-quota warning (warn.ts). The red figure and logo need nothing here. When the person chose
- * to be told (pop-up and / or Windows notification, both off by default), one session claims
- * each window that dropped to its level and tells them. Never throws, never awaited.
+ * to be told (pop-up and / or Windows notification, both off by default), one session wins each
+ * window that dropped to its level and tells them, at most once (warn.ts says how and what is
+ * not guaranteed). Never throws, never awaited; nothing runs while no quota is due.
  */
 async function checkWarn($: EngineInterface, list: readonly Window[]): Promise<void> {
   try {
@@ -167,17 +168,16 @@ async function checkWarn($: EngineInterface, list: readonly Window[]): Promise<v
         try { await $.ui.cancelNotify(`lucelis-back-${kind}`) } catch { /* no host */ }
       }
     }
-    if (!(w.toast || w.notify) || !due(list, w, {}).length) return
-    const lv = await read($, live)
+    if (!(w.toast || w.notify) || !due(list, w).length) return
     const now = await $.clock.now()
-    const won = await claim(fileIo($, `${(await paths($)).dir}\\warned.json`), lv?.sid ?? 'unknown', now, list, w)
+    const won = await claim(claimIo($, `${(await paths($)).dir}\\claims`), now, list, w)
     for (const x of won) {
       const text = message(x, now)
       if (w.toast) { try { await $.ui.toast(`Lucelis: ${text}`, { timeoutMs: 10_000 }) } catch { /* no surface */ } }
       if (w.notify) {
         try { await $.ui.notify(text, { title: 'Lucelis', key: `lucelis-low-${windowId(x)}` }) } catch { /* turned off */ }
-        const at = x.resetsAt ? Date.parse(x.resetsAt) : NaN
-        if (w.back && lastSurface === 'desktop' && !Number.isNaN(at) && at > now) {
+        const at = resetMs(x)
+        if (w.back && lastSurface === 'desktop' && at !== null && at > now) {
           try {
             await $.ui.notify(`Your ${x.kind === 'five_hour' ? '5-hour' : '7-day'} quota has reset.`, { title: 'Lucelis', key: `lucelis-back-${x.kind}`, at })
             booked.set(x.kind, windowId(x))
@@ -209,18 +209,37 @@ async function checkNews($: EngineInterface): Promise<void> {
   } catch { /* never holds the session up */ }
 }
 
-/** The last 5H / 7D figures, kept so a new session can show them as "last seen" until it has its own. */
+/**
+ * The last 5H / 7D figures, kept so a new session can show them as "last seen" until it has its
+ * own. Written only when a whole-number figure or a window changes. The signature of what is
+ * stored moves only after a write succeeded, so a failed write is tried again with the next
+ * report (reports come only when the figures change: no retry loop). One write at a time: a
+ * report arriving meanwhile is written after it, the newest only.
+ */
 let seenSig = ''
-async function saveSeen($: EngineInterface, list: readonly Window[]): Promise<void> {
+let seenBusy = false
+let seenNext: readonly Window[] | null = null
+export async function saveSeen($: EngineInterface, list: readonly Window[]): Promise<void> {
+  if (seenBusy) { seenNext = list; return }
+  seenBusy = true
   try {
-    const keep = list.filter(w => (w.kind === 'five_hour' || w.kind === 'seven_day') && w.resetsAt)
-    // Written only when a whole-number figure or a window changes, not on every report.
-    const sig = keep.map(w => `${w.kind}:${leftOf(w)}:${windowId(w)}`).join('|')
-    if (!keep.length || sig === seenSig) return
-    seenSig = sig
-    await $.store.set('lastSeen', keep.map(({ kind, percentUsed, resetsAt }) => ({ kind, percentUsed, resetsAt })))
-  } catch { /* not kept this time */ }
+    let cur: readonly Window[] | null = list
+    while (cur) {
+      seenNext = null
+      const keep = cur.filter(w => (w.kind === 'five_hour' || w.kind === 'seven_day') && resetMs(w) !== null && !w.stale)
+      const sig = keep.map(w => `${w.kind}:${leftOf(w)}:${windowId(w)}`).join('|')
+      if (keep.length && sig !== seenSig) {
+        try {
+          await $.store.set('lastSeen', keep.map(({ kind, percentUsed, resetsAt }) => ({ kind, percentUsed, resetsAt })))
+          seenSig = sig
+        } catch { /* not kept: the next report tries again */ }
+      }
+      cur = seenNext
+    }
+  } finally { seenBusy = false }
 }
+/** Tests: start from nothing stored. */
+export const forgetSeen = () => { seenSig = ''; seenBusy = false; seenNext = null }
 
 /** The kept figures whose window has not reset yet, marked stale; none once the window has passed. */
 async function loadSeen($: EngineInterface, now: number): Promise<Window[]> {
@@ -229,27 +248,43 @@ async function loadSeen($: EngineInterface, now: number): Promise<Window[]> {
     if (!Array.isArray(v)) return []
     const out: Window[] = []
     for (const w of v as Window[]) {
-      const at = typeof w?.resetsAt === 'string' ? Date.parse(w.resetsAt) : NaN
-      if ((w.kind === 'five_hour' || w.kind === 'seven_day') && typeof w.percentUsed === 'number' && !Number.isNaN(at) && at > now)
+      // One malformed entry is skipped, never the reason to drop the others.
+      if (!w || typeof w !== 'object') continue
+      const at = resetMs(w)
+      if ((w.kind === 'five_hour' || w.kind === 'seven_day') && typeof w.percentUsed === 'number' && Number.isFinite(w.percentUsed) && at !== null && at > now)
         out.push({ kind: w.kind, percentUsed: w.percentUsed, resetsAt: w.resetsAt, stale: true })
     }
     return out
   } catch { return [] }
 }
 
-/** Check for updates: Lucelis goes online only here, and only on the person's press. */
+/**
+ * Check for updates: Lucelis goes online only here, and only on the person's press. A press
+ * while a check runs is ignored. The host's fetch cannot be cancelled, so each request is
+ * bounded by a timeout instead (update.ts), and a result that arrives after a newer check
+ * started is dropped rather than shown.
+ */
+let checkGen = 0
+let checking = false
 async function checkUpdate($: EngineInterface): Promise<void> {
-  const installed = await installedVersion($)
-  await update($, upd, () => ({ phase: 'checking', installed }))
+  if (checking) return
+  checking = true
+  const gen = ++checkGen
   try {
-    const latest = await latestVersion($)
-    const newer = !!installed && compareVersions(latest, installed) > 0
-    // A newer version: one more request, for its notes, so the Update button can say what it brings.
-    const notes = newer ? await latestNotes($, latest) : ''
-    await update($, upd, () => ({ phase: newer ? 'newer' : 'latest', installed, latest, notes }))
-  } catch (err) {
-    await update($, upd, () => ({ phase: 'failed', installed, detail: String((err as Error)?.message ?? err).slice(0, 120) }))
-  }
+    const installed = await installedVersion($)
+    await update($, upd, () => ({ phase: 'checking', installed }))
+    let next: UpdateState
+    try {
+      const latest = await latestVersion($)
+      const newer = !!installed && compareVersions(latest, installed) > 0
+      // A newer version: one more request, for its notes, so the Update button can say what it brings.
+      const notes = newer ? await latestNotes($, latest) : ''
+      next = { phase: newer ? 'newer' : 'latest', installed, latest, notes }
+    } catch (err) {
+      next = { phase: 'failed', installed, detail: String((err as Error)?.message ?? err).slice(0, 120) }
+    }
+    if (gen === checkGen) await update($, upd, () => next)
+  } finally { checking = false }
 }
 
 /** Puts the two update commands on the clipboard; Lucelis never runs them itself. */

@@ -110,13 +110,15 @@ foreach ($f in $req['files']) {
         if ($t -eq 'assistant') {
           $m = $o['message']
           if ($m -isnot [Collections.Generic.Dictionary[string, object]]) { [void]$out.Append("X`t$rel`tshape`n"); continue }
+          # One reply is several lines (one per content block): judge and count it once, by its id.
+          $id = [string]$m['id']; if (-not $id) { $id = [string]$o['requestId'] }
+          if ($id -and $seen.Contains($id)) { continue }
           $u = $m['usage']
           if ($u -isnot [Collections.Generic.Dictionary[string, object]]) { [void]$out.Append("X`t$rel`tshape`n"); continue }
           $model = [string]$m['model']; if ($model -eq '<synthetic>') { continue }
-          if (-not ($u.ContainsKey('input_tokens') -or $u.ContainsKey('output_tokens'))) { [void]$out.Append("X`t$rel`tshape`n"); continue }
-          $id = [string]$m['id']; if (-not $id) { $id = [string]$o['requestId'] }
+          if (-not ($u.ContainsKey('input_tokens') -or $u.ContainsKey('output_tokens'))) { if ($id) { [void]$seen.Add($id) }; [void]$out.Append("X`t$rel`tshape`n"); continue }
           if (-not $id -or -not $sid) { [void]$out.Append("X`t$rel`tshape`n"); continue }
-          try { $tc = TimeCols ([string]$o['timestamp']) } catch { [void]$out.Append("X`t$rel`tshape`n"); continue }
+          try { $tc = TimeCols ([string]$o['timestamp']) } catch { [void]$seen.Add($id); [void]$out.Append("X`t$rel`tshape`n"); continue }
           $in = Num $u['input_tokens']; $op = Num $u['output_tokens']; $cw = Num $u['cache_creation_input_tokens']; $cr = Num $u['cache_read_input_tokens']
           if (($in + $op + $cw + $cr) -eq 0) { continue }   # streaming placeholder copy
           if (-not $seen.Add($id)) { continue }              # one row per content block: count the message once

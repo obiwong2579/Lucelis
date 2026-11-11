@@ -4,11 +4,11 @@ A lightweight usage bar and local activity dashboard for Claude Code on Windows.
 
 Lucelis shows your 5-hour and 7-day quota, prompt-cache state, context usage, current-session activity, next-message cost estimates, and historical project/model analytics directly inside Claude Code.
 
-Everything is processed locally. No telemetry, no analytics server, and no transcript data leaves your machine. It goes online only when you press Check for updates.
+Local-first. Your usage history stays on your machine: no telemetry, no analytics server, no model calls. Network access occurs only when you explicitly check for updates.
 
 Lucelis is an independent community plugin and is not affiliated with Anthropic.
 
-**Local-only • No telemetry • No model calls • Network only when you press Check for updates**
+**Local-first • No telemetry • No model calls • Network only when you check for updates**
 
 ![The Lucelis bar above the prompt](assets/screenshots/bar.svg)
 
@@ -35,7 +35,7 @@ Lucelis has three levels. Each one opens the next.
 
 - **Health colours.** The 5H and 7D figures are green with 70% or more left, red at or under your low level (30% by default, set in Settings), and yellow between. Context is green from 70% left, yellow from 30%, red below.
 - **The Lucelis mark** leads the bar in the desktop app: a rounded L with three bars and a glint. The bars draw in, top to bottom, while Claude is working on a reply, and it is still otherwise. The bars and the glint turn red while a quota is at or under your warning level.
-- **Low-quota warning.** When what is left of the 5-hour or 7-day quota drops to your level (30% by default), its figure on the bar and the logo turn red. If you turn them on, Lucelis also tells you once for that quota window: a short pop-up in the app, a Windows notification, or both. With several sessions open, only one of them tells you.
+- **Low-quota warning.** When what is left of the 5-hour or 7-day quota drops to your level (30% by default), its figure on the bar and the logo turn red. If you turn them on, Lucelis also tells you: a short pop-up in the app, a Windows notification, or both, at most once per quota window, from one of your open sessions.
 - **One or two lines.** On a wide window everything sits on one row; on a narrow one, items that do not fit move to a second row.
 - **Tight on a narrow window.** Before 5H, 7D, cache or context would be left out, the row gets shorter instead: `5H 76 7D 52 WARM CTX 41` (no % signs or separators; the colours keep their meaning), then `5H 76 7D 52 W C 41`. Reset times and cache minutes are then in More. 5H and 7D are never left out.
 - **Last seen after a restart.** Until a new session's first reply, the bar shows the last 5H and 7D figures from an earlier session, dimmed and marked *last seen*, while their window has not reset. They are never coloured or warned about, and the live figures replace them on the first reply.
@@ -153,7 +153,7 @@ Only one plugin can draw the row above the prompt. If you also run another one t
 - **Compact bar items.** One toggle per item, listed in priority order. Each shows its state: shown, off, hidden by Minimal, no room at this width, or no data yet.
 - **Dashboard.** Default period and heatmap metric.
 - **Project aliases.** `C:\path\to\folder => Name` maps a folder and everything under it to one project. An alias named like an existing project joins it.
-- **Export.** **Export CSV** saves one row per day, project and model (token counts, responses, sessions; no conversation text) for the period shown, to your Documents folder or a folder you set. It opens in Excel.
+- **Export.** **Export CSV** saves one row per day, project and model (token counts, responses, sessions; no conversation text) for the default period, to your Documents folder or a folder you set. It opens in Excel. *Sessions* counts the sessions with at least one reply on that day, in that project, from that model, so a session spanning several days or models appears in each of its rows. A project or model name that starts with `=`, `+`, `-` or `@` is written with a leading apostrophe, so a spreadsheet shows it as text instead of running it as a formula; Excel shows the apostrophe in the cell.
 - **Updates.** Under About Lucelis at the bottom of Overview, **Check for updates** asks GitHub for the latest version number, only when you press it. If a newer one is out, the button becomes **Update to X.Y.Z**, with what that version brings underneath. Pressing it puts the two update commands on your clipboard to paste into the prompt; Lucelis never installs anything itself.
 
 A good everyday setup: Normal, Wrap to a second row on, and 5H, 7D, Cache, Context and Reset times on. Add the rest to taste.
@@ -177,9 +177,9 @@ They cover the input side only and exclude your new message and all output. Pric
 
 ## Privacy
 
-**Local-only • No telemetry • No model calls • Network only when you press Check for updates**
+**Local-first • No telemetry • No model calls • Network only when you check for updates**
 
-Lucelis calls no model and has no telemetry. It makes no network request on its own. The one exception is the **Check for updates** button (About Lucelis, at the bottom of Overview): only when you press it, Lucelis downloads the public file `https://raw.githubusercontent.com/obiwong2579/Lucelis/main/.claude-plugin/plugin.json` to read the latest version number, and if that version is newer, the public `CHANGELOG.md` beside it to say what it brings. Nothing about you or your usage is sent.
+Lucelis is local-first: it calls no model, has no telemetry, and makes no network request on its own. The one exception is the **Check for updates** button (About Lucelis, at the bottom of Overview): only when you press it, Lucelis downloads the public file `https://raw.githubusercontent.com/obiwong2579/Lucelis/main/.claude-plugin/plugin.json` to read the latest version number, and if that version is newer, the public `CHANGELOG.md` beside it to say what it brings. Nothing about you or your usage is sent.
 
 | It reads | Why |
 |---|---|
@@ -191,7 +191,7 @@ Lucelis calls no model and has no telemetry. It makes no network request on its 
 |---|---|
 | `~/.claude/lucelis/cache-a.json`, `cache-b.json` | Aggregated counts per day, model and folder, plus per-session totals. |
 | Its plugin settings (Claude Code's plugin store) | Your bar settings and aliases; the last 5H / 7D figures and their reset times (for *last seen*); the last version you ran (for *Updated to*). |
-| `~/.claude/lucelis/warned.json` | Which quota windows were already warned about, so several sessions warn only once. Cleared as windows reset. |
+| `~/.claude/lucelis/claims/` | Only if you turned on a pop-up or notification: one empty folder per quota window you were told about, so your other open sessions do not tell you again. Old ones are removed an hour after their window resets. Making one runs a short `cmd.exe mkdir`. |
 | `Lucelis-export-<date>.csv`, only when you press Export CSV | In your Documents folder, or the folder you set. |
 
 It never modifies a transcript. To remove everything it stored, delete `~/.claude/lucelis/`.

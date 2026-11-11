@@ -239,6 +239,8 @@ export const ingest = (a: Agg, text: string, tasks: FileTask[]): IngestResult =>
   }
   let n = 0
   const pending: string[][] = []
+  /** Unknown-shape replies seen in the file being read; counted when its read completes (F). */
+  let odd = 0
   const flush = (task: FileTask) => {
     const tail = tailOf(task.p)
     for (const c of pending) {
@@ -302,6 +304,8 @@ export const ingest = (a: Agg, text: string, tasks: FileTask[]): IngestResult =>
       }
     }
     pending.length = 0
+    if (odd) a.shape = (a.shape ?? 0) + odd
+    odd = 0
   }
   for (const line of text.split(/\r?\n/)) {
     if (!line) continue
@@ -313,7 +317,7 @@ export const ingest = (a: Agg, text: string, tasks: FileTask[]): IngestResult =>
         break
       case 'F': {
         const task = byPath.get(c[1])
-        if (!task) { pending.length = 0; break }
+        if (!task) { pending.length = 0; odd = 0; break }
         flush(task)
         reached.add(task.p)
         const off = Number(c[2])
@@ -325,7 +329,7 @@ export const ingest = (a: Agg, text: string, tasks: FileTask[]): IngestResult =>
         break
       }
       case 'X':
-        if (c[2] === 'shape') a.shape = (a.shape ?? 0) + 1
+        if (c[2] === 'shape') odd++
         else a.parseErrors++
         break
       default:
@@ -333,6 +337,7 @@ export const ingest = (a: Agg, text: string, tasks: FileTask[]): IngestResult =>
     }
   }
   pending.length = 0 // rows of a file whose F never came (cut output): keep none; the file is re-read
+  odd = 0
   for (const t of tasks) if (!reached.has(t.p)) next.push(t)
   a.orphans = [...orphans].slice(-5000)
   return { next, rows: n, reset }

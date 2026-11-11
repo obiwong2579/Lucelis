@@ -9,6 +9,8 @@ import { envelope } from '../hooks/core'
 import { GOOD, MUTED, RED } from '../hooks/fmt'
 import type { View } from '../hooks/model'
 import { whatsNew } from '../hooks/update'
+import { exportName, field, safeText, toCsv } from '../hooks/csv'
+import { makeResolver } from '../hooks/agg'
 import { FORMAT_CHANGE } from './fixtures/format-change'
 
 const NOW = Date.parse('2026-11-11T10:00:00Z')
@@ -17,7 +19,8 @@ const D7 = (used: number, resetsAt = '2026-11-14T08:00:00Z') => ({ kind: 'seven_
 
 const CHANGELOG = '# Changelog\n\n## 1.1.0 — 2026-11-11\n\n- **Low-quota warning.** Text.\n- **Logo states.** Text.\n- **This week** on the Overview tab.\n\n## 1.0.2 — 2026-11-10\n\n- **Old.** Text.\n'
 
-type Opts = { store?: Record<string, unknown>; rateLimits?: unknown[]; version?: string; history?: boolean; agg?: ReturnType<typeof emptyAgg> }
+/** `storeFail`: how the next store writes of a key fail ('sync' throws, 'async' rejects), one entry per write. */
+type Opts = { fetch?: (url: string) => unknown; store?: Record<string, unknown>; rateLimits?: unknown[]; version?: string; history?: boolean; agg?: ReturnType<typeof emptyAgg>; storeFail?: Record<string, ('sync' | 'async')[]> }
 
 const histAgg = () => {
   const a = emptyAgg()
@@ -29,10 +32,16 @@ const histAgg = () => {
 
 const boot = async ($: any, on: any, o: Opts = {}) => {
   const db: Record<string, unknown> = { ...(o.store ?? {}) }
-  const calls = { toast: [] as string[], notify: [] as any[], copied: [] as string[], db }
+  const calls = { toast: [] as string[], notify: [] as any[], copied: [] as string[], db, writes: {} as Record<string, number> }
   const clock = mock.clock(on, { now: NOW })
   on('store.get', (_: any, e: any) => ({ value: db[e.key] }))
-  on('store.set', (_: any, e: any) => { db[e.key] = JSON.parse(JSON.stringify(e.value)); return { value: undefined } })
+  on('store.set', (_: any, e: any) => {
+    calls.writes[e.key] = (calls.writes[e.key] ?? 0) + 1
+    const f = o.storeFail?.[e.key]?.shift()
+    if (f === 'sync') throw new Error('store locked')
+    if (f === 'async') return Promise.reject(new Error('store locked'))
+    db[e.key] = JSON.parse(JSON.stringify(e.value)); return { value: undefined }
+  })
   on('session.start', (_: any, e: any) => ({ cwd: e.cwd }))
   on('session.usage', () => ({ value: { startedAt: NOW - 60e3, context: { window: 1_000_000, tokens: 0, percent: 0 }, rateLimits: o.rateLimits ?? [] } }))
   on('session.id', () => ({ value: 's1' }))
@@ -53,6 +62,7 @@ const boot = async ($: any, on: any, o: Opts = {}) => {
   on('ui.toast', (_: any, e: any) => { calls.toast.push(e.text); return { value: undefined } })
   on('ui.notify', (_: any, e: any) => { calls.notify.push(e); return { value: { isSent: true, channel: 'client' } } })
   on('ui.copy', (_: any, e: any) => { calls.copied.push(e.text); return { value: { isCopied: true } } })
+  if (o.fetch) on('http.fetch', (_: any, e: any) => o.fetch!(String(e.url)))
   on('session.measure', (_: any, e: any) => ({ changed: e.changed }))
   on('classic.SessionStart', () => ({}))
   await $.session.start({ surface: 'desktop', isInteractive: true, cwd: 'F:\\W\\Atlas' })
@@ -142,6 +152,31 @@ test('last seen: kept only when a whole-number figure or a window changes', asyn
   expect(JSON.stringify(orig.lastSeen)).toBe(first)
   await b.measure(H5(52), D7(40))
   expect(JSON.stringify(orig.lastSeen)).not.toBe(first)
+  // A new window with the same figure is a change too.
+  const before = b.calls.writes.lastSeen
+  await b.measure(H5(52, '2026-11-11T17:30:00Z'), D7(40))
+  expect(b.calls.writes.lastSeen).toBe(before + 1)
+})
+
+for (const how of ['sync', 'async'] as const) {
+  test(`last seen: a failed write (${how === 'sync' ? 'thrown' : 'rejected'}) is tried again with the next report, then not repeated`, async ($, on) => {
+    const b = await boot($, on, { storeFail: { lastSeen: [how] } })
+    await b.measure(H5(50), D7(40)) // write fails
+    expect(b.calls.db.lastSeen).toBe(undefined)
+    await b.measure(H5(50.3), D7(40)) // same whole numbers: retried, now succeeds
+    expect((b.calls.db.lastSeen as any[]).length).toBe(2)
+    const n = b.calls.writes.lastSeen
+    await b.measure(H5(50.4), D7(40)) // stored and unchanged: no write
+    expect(b.calls.writes.lastSeen).toBe(n)
+  })
+}
+
+test('last seen: never written from saved figures; expired and malformed saved figures are ignored', async ($, on) => {
+  const b = await boot($, on, { store: { lastSeen: [H5(80), { kind: 'seven_day', percentUsed: 'x', resetsAt: '2026-11-14T08:00:00Z' }, { kind: 'five_hour', percentUsed: 10 }, null] } })
+  const s = await bandText($)
+  expect(s).toContain('20%') // the one valid saved figure
+  expect(s).not.toContain('7D') // malformed ones dropped
+  expect(b.calls.writes.lastSeen ?? 0).toBe(0) // showing saved figures writes nothing
 })
 
 // ---------------------------------------------------------------- tight bar
@@ -290,4 +325,133 @@ test('Settings descriptions: a hover card behind an ⓘ in the desktop app, a pl
   expect(JSON.stringify(await term.find({ key: 'h-mc' }))).not.toContain('i-h-mc')
   expect(await term.find({ text: /^From cache = cache reads/ })).toBeDefined()
   await term.unmount()
+})
+
+// ---------------------------------------------------------------- CSV safety (1.1.0 hardening)
+
+test('CSV: text that a spreadsheet would run as a formula opens as text; names and numbers otherwise untouched', async () => {
+  for (const bad of ['=SUM(A1:A9)', '+1+2', '-2+3', '@SUM(1)', ' =x', '  +x', '\t=x', '\r=x', '\n=x', '\u00a0=x', '\u3000=x', '＝x', '＋x', '－x', '＠x', '\t', '\u0000=x'])
+    expect(safeText(bad)).toBe(`'${bad}`)
+  for (const ok of ['Atlas', 'Café 東京 🚀', '', 'a=b', 'x-1', 'claude-opus-5-5', "'quoted"]) expect(safeText(ok)).toBe(ok)
+  expect(field(-5)).toBe('-5') // numbers are never prefixed
+  expect(field('=1,2')).toBe(`"'=1,2"`) // made safe first, then quoted
+  expect(field('-a"b')).toBe(`"'-a""b"`)
+  expect(field('=x\r\ny')).toBe(`"'=x\r\ny"`)
+})
+
+test('CSV: grouping, totals, sessions, date bounds, quoting, Unicode and column order', async () => {
+  const a = emptyAgg()
+  const t = { p: 'X\\s.jsonl', o: 0, owner: 's1' }
+  const at = (d: string) => Date.parse(`${d}T09:00:00Z`)
+  const A = (sid: string, id: string, day: string, model: string, cwd: string, i: number, o: number, w: number, r: number) =>
+    ['A', sid, id, at(day), day, 9, model, i, o, w, r, cwd, 0].join('\t')
+  ingest(a, [
+    'N\t2026-11-11\t0',
+    A('s1', 'm1', '2026-11-09', 'claude-opus-5-5', 'F:\\W\\Atlas', 10, 20, 30, 40),
+    A('s1', 'm2', '2026-11-09', 'claude-opus-5-5', 'F:\\W\\Atlas', 1, 2, 3, 4),
+    A('s1', 'm3', '2026-11-10', 'claude-opus-5-5', 'F:\\W\\Atlas', 5, 5, 5, 5), // same session, next day
+    A('s1', 'm4', '2026-11-10', 'claude-haiku-5-5', 'F:\\W\\Atlas', 1, 1, 1, 1), // same session, other model
+    A('s2', 'm5', '2026-11-10', 'claude-opus-5-5', 'F:\\W\\Atlas', 2, 2, 2, 2), // another session
+    A('s3', 'm6', '2026-11-10', 'claude-opus-5-5', 'F:\\W\\=evil', 1, 1, 1, 1),
+    A('s4', 'm7', '2026-11-12', 'claude-opus-5-5', 'F:\\W\\Atlas', 9, 9, 9, 9), // after the range
+    `F\t${t.p}\t999\t1`,
+  ].join('\n'), [t])
+  const aliases = [{ path: 'F:\\W\\=evil', name: '=HYPERLINK("http://x","click")' }, { path: 'F:\\W\\Atlas', name: 'Atlas, "Nord" 東京\nlab' }]
+  const { text, rows } = toCsv(a, makeResolver(a, aliases), '2026-11-09', '2026-11-11')
+  expect(text.startsWith('\uFEFF')).toBe(true)
+  expect(text.endsWith('\r\n')).toBe(true)
+  const lines = text.slice(1).split('\r\n')
+  expect(lines[0]).toBe('Date,Project,Model,Activity tokens,Input,Output,Cache writes,Cache reads,Responses,Sessions')
+  expect(rows).toBe(4)
+  const proj = '"Atlas, ""Nord"" 東京\nlab"'
+  // 2026-11-09: two replies of s1 summed; activity = input + cache writes + output.
+  expect(lines[1]).toBe(`2026-11-09,${proj},claude-opus-5-5,${11 + 33 + 22},11,22,33,44,2,1`)
+  // 2026-11-10: the formula-like project, made safe and quoted (it holds a comma and quotes).
+  expect(lines[2]).toBe(`2026-11-10,"'=HYPERLINK(""http://x"",""click"")",claude-opus-5-5,3,1,1,1,1,1,1`)
+  expect(lines[3]).toBe(`2026-11-10,${proj},claude-haiku-5-5,3,1,1,1,1,1,1`)
+  // s1 and s2 both replied from Opus in Atlas that day: 2 sessions; s1 is also counted on the Haiku row.
+  expect(lines[4]).toBe(`2026-11-10,${proj},claude-opus-5-5,${7 + 7 + 7},7,7,7,7,2,2`)
+  expect(text).not.toContain('2026-11-12')
+  expect(exportName('2026-11-11')).toBe('Lucelis-export-2026-11-11.csv')
+})
+
+// ---------------------------------------------------------------- update check (1.1.0 hardening)
+
+test('update check: presses while a check runs are ignored; a missing changelog still offers the update', async ($, on) => {
+  let fetches = 0
+  let release: (() => void) | null = null
+  const b = await boot($, on, {
+    history: true,
+    fetch: async url => {
+      fetches++
+      if (url.endsWith('CHANGELOG.md')) return { value: { headers: {}, status: 404, ok: false, text: 'missing' } }
+      await new Promise<void>(r => { release = r })
+      return { value: { headers: {}, status: 200, ok: true, text: '{"version":"9.9.9"}' } }
+    },
+  })
+  const pane = await $.ui.mount({ plugin: 'lucelis', surface: 'desktop', component: 'Pane', requestId: 'lucelis', props: { bodyColumns: 100 } })
+  await pane.press({ key: 'check' })
+  await pane.press({ key: 'check' }) // ignored while the first is out
+  await pane.press({ key: 'check' })
+  for (let i = 0; i < 40 && !release; i++) await new Promise(r => setTimeout(r, 5))
+  ;(release as unknown as () => void)()
+  await b.clock.settle()
+  for (let i = 0; i < 40 && (await pane.find({ key: 'check' }))?.props.label !== 'Update to 9.9.9'; i++) await new Promise(r => setTimeout(r, 5))
+  expect(fetches).toBe(2) // one version request + one changelog request; the repeats sent nothing
+  expect((await pane.find({ key: 'check' }))?.props.label).toBe('Update to 9.9.9')
+  expect(await pane.find({ text: 'What 9.9.9 brings: see the full notes.' })).toBeDefined()
+  await pane.unmount()
+})
+
+test('update check: oversized, malformed, non-JSON or failed answers never offer an update', async ($, on) => {
+  const answers = [
+    { status: 200, ok: true, text: '{"version":"1.2"}' },
+    { status: 200, ok: true, text: '{"version":"<script>"}' },
+    { status: 200, ok: true, text: 'not json' },
+    { status: 200, ok: true, text: '{"other":1}' },
+    { status: 200, ok: true, text: `{"version":"9.9.9","pad":"${'x'.repeat(70_000)}"}` },
+    { status: 500, ok: false, text: '' },
+  ]
+  const b = await boot($, on, { history: true, fetch: () => ({ value: { headers: {}, ...answers[0] } }) })
+  const pane = await $.ui.mount({ plugin: 'lucelis', surface: 'desktop', component: 'Pane', requestId: 'lucelis', props: { bodyColumns: 100 } })
+  for (let i = 0; i < answers.length; i++) {
+    await pane.press({ key: 'check' })
+    await b.clock.settle()
+    for (let j = 0; j < 40 && !(await pane.find({ text: /^Could not check:/ })); j++) await new Promise(r => setTimeout(r, 5))
+    expect((await pane.find({ key: 'check' }))?.props.label).toBe('Check for updates')
+    expect(await pane.find({ text: /^Could not check:/ })).toBeDefined()
+    answers.shift()
+  }
+  await pane.unmount()
+})
+
+test('update check: a request that never answers ends in a clear failure after the timeout', async ($, on) => {
+  const b = await boot($, on, { history: true, fetch: () => new Promise(() => {}) })
+  const pane = await $.ui.mount({ plugin: 'lucelis', surface: 'desktop', component: 'Pane', requestId: 'lucelis', props: { bodyColumns: 100 } })
+  await pane.press({ key: 'check' })
+  await b.clock.advance(10_500)
+  await b.clock.settle()
+  for (let j = 0; j < 40 && !(await pane.find({ text: /^Could not check:/ })); j++) await new Promise(r => setTimeout(r, 5))
+  expect(await pane.find({ text: 'Could not check: no answer within 10 seconds. Nothing was changed.' })).toBeDefined()
+  expect((await pane.find({ key: 'check' }))?.props.label).toBe('Check for updates')
+  await pane.unmount()
+})
+
+// ---------------------------------------------------------------- format guard counting (1.1.0 hardening)
+
+test('format guard: an unknown-shape reply in a read that was cut is counted once, when the file is read again', async () => {
+  const a = emptyAgg()
+  const t = { p: 'P\\S1.jsonl', o: 0, owner: 'S1' }
+  // First call: the output was cut before the file's F row: nothing of it counts.
+  ingest(a, 'N\t2026-11-10\t480\nX\tP\\S1.jsonl\tshape\nX\tP\\S1.jsonl\tshape\n', [t])
+  expect(a.shape ?? 0).toBe(0)
+  // The re-read completes: counted now, once.
+  ingest(a, 'N\t2026-11-10\t480\nX\tP\\S1.jsonl\tshape\nX\tP\\S1.jsonl\tshape\nF\tP\\S1.jsonl\t100\t1\n', [t])
+  expect(a.shape).toBe(2)
+  // An unreadable line is still a parse error, apart from the format count.
+  ingest(a, 'N\t2026-11-10\t480\nX\tP\\S1.jsonl\tparse\nF\tP\\S1.jsonl\t120\t1\n', [{ ...t, o: 100 }])
+  expect(a.shape).toBe(2)
+  expect(a.parseErrors).toBe(1)
+  // A rebuild starts the count again from nothing.
+  expect(emptyAgg().shape ?? 0).toBe(0)
 })

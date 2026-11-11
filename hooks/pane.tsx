@@ -685,7 +685,7 @@ export const paneTree = (ui: El, a: Agg | null, v: View, pv: PaneView, st: Setti
     }
     const setWarn = (p: Partial<Settings['warn']>) => act.setSettings(x => ({ ...x, warn: { ...x.warn, ...p } }))
     out.push(<Box key="wn-how" marginTop={1}><Text bold>How to tell you</Text></Box>)
-    out.push(note1('wn-how-n', 'Once per quota window, in one open session only. All off unless you turn them on.'))
+    out.push(note1('wn-how-n', 'At most once per quota window, from one of your open sessions. All off unless you turn them on.'))
     out.push(<Box key="wn-gap" marginTop={1} />)
     out.push(setting('wn2', 'Pop-up in the app', onOff('wt', !!w.toast, v => setWarn({ toast: v })), 'A small box in the conversation for about ten seconds: "5-hour quota 25% left · resets in 2h 30m".'))
     out.push(setting('wn3', 'Windows notification', onOff('wf', !!w.notify, v => setWarn({ notify: v })), 'The same words as a Windows notification, so it reaches you when the app is in the background.'))
@@ -788,7 +788,7 @@ export const paneTree = (ui: El, a: Agg | null, v: View, pv: PaneView, st: Setti
       out.push(row('ab-cl', [<Button key="ab-notes" plain label={act.notesCopied ? 'Changelog link copied' : 'Copy the changelog link'} onPress={() => act.copyNotes?.()} />]))
     }
     out.push(<Box key="ab-p" marginTop={1} flexDirection="column">
-      <Text key="p1" color={MUTED}>Local-only • No telemetry • No model calls • Network only when you press Check for updates</Text>
+      <Text key="p1" color={MUTED}>Local-first • No telemetry • No model calls • Network only when you check for updates</Text>
       <Text key="p2" color={MUTED}>For Claude Code on Windows · PolyForm Noncommercial License 1.0.0</Text>
     </Box>)
   }
