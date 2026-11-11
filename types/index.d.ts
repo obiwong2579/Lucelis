@@ -42,9 +42,11 @@ export type Settings = {
   aliases: { path: string; name: string }[]
   /**
    * Low-quota level per quota, % left (1.1.0); 0 = off. At or under it the figure and the
-   * logo turn red and one pop-up is shown per quota window.
+   * logo turn red. How you are told, once per quota window (all off by default): `toast`, a
+   * pop-up in the app; `notify`, a Windows notification; `back`, with `notify`, a
+   * notification booked for the moment the quota resets.
    */
-  warn: { h5: number; d7: number }
+  warn: { h5: number; d7: number; toast: boolean; notify: boolean; back: boolean }
   /** Where CSV exports go; empty: the Documents folder. */
   exportDir: string
 }

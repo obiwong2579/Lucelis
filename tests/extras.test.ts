@@ -152,7 +152,7 @@ const VIEW = {
   ctx: { percent: 41, tokens: 410_000, window: 1_000_000, left: 590_000, isNearLimit: false },
   session: { project: { key: 'p', name: 'Workspace', source: 'root' }, model: 'claude-opus-5-5', elapsedMs: 3600e3, tokens: 100_000 },
 } as unknown as View
-const ST = { mode: 'normal', wrap: false, logo: true, show: { h5: true, d7: true, cache: true, ctx: true, resets: true, today: false, session: true, elapsed: false, trend: false, project: true, model: false }, warn: { h5: 30, d7: 30 } } as any
+const ST = { mode: 'normal', wrap: false, logo: true, show: { h5: true, d7: true, cache: true, ctx: true, resets: true, today: false, session: true, elapsed: false, trend: false, project: true, model: false }, warn: { h5: 30, d7: 30, toast: false, notify: false, back: false } } as any
 const text = (L: ReturnType<typeof barLayout>) => L.rows[0].map((p, i) => (i && !p.after ? (L.tier ? ' ' : ' │ ') : '') + p.segs.map(s => s[0]).join('')).join('')
 const colourOf = (L: ReturnType<typeof barLayout>, key: string) => L.rows[0].find(p => p.key === key)?.segs[1][1]
 
@@ -234,17 +234,25 @@ test('Settings: groups in order, each warning is one choice per quota, updates l
   expect(ov).toContain('p-7d')
   expect(await pane.find({ key: 'h-ab' })).toBeDefined()
   expect(await pane.find({ key: 'check' })).toBeDefined()
+  expect(JSON.stringify(await pane.find({ key: 'ab-p' }))).not.toContain('obiwong2579')
   await pane.press({ key: 'tab-settings' })
   const all = JSON.stringify(await pane.find({}))
   const order = ['APPEARANCE', 'COMPACT BAR ITEMS', 'LOW-QUOTA WARNING', 'DASHBOARD', 'PROJECT NAMES', 'HISTORY DATA'].map(t => all.indexOf(t))
   expect(order.every(i => i >= 0)).toBe(true)
   expect([...order].sort((x, y) => x - y)).toEqual(order)
   expect(await pane.find({ key: 'check' })).toBe(undefined) // not in Settings any more
-  for (const k of ['wn-on', 'wt-on', 'wf-on', 'wb-on']) expect(await pane.find({ key: k })).toBe(undefined)
+  // How to be told: pop-up and Windows notification, both off by default; Quota is back only with notifications on.
+  expect((await pane.find({ key: 'wt-off' }))?.props.variant).toBe('primary')
+  expect((await pane.find({ key: 'wf-off' }))?.props.variant).toBe('primary')
+  expect(await pane.find({ key: 'wb-on' })).toBe(undefined)
+  expect(all.indexOf('How to tell you') > all.indexOf('LOW-QUOTA WARNING') && all.indexOf('How to tell you') < all.indexOf('DASHBOARD')).toBe(true)
+  expect(all.includes('obiwong2579')).toBe(false)
   // 5H off: the choice is saved as 0, and the other quota keeps its level.
   await pane.press({ key: 'wn-h5-0' })
   for (let i = 0; i < 30 && (b.calls.db.settings as any)?.warn?.h5 !== 0; i++) await new Promise(r => setTimeout(r, 10))
-  expect((b.calls.db.settings as any).warn).toEqual({ h5: 0, d7: 30 })
+  expect((b.calls.db.settings as any).warn).toEqual({ h5: 0, d7: 30, toast: false, notify: false, back: false })
+  await pane.press({ key: 'wf-on' })
+  expect(await pane.find({ key: 'wb-on' })).toBeDefined()
   expect((await pane.find({ key: 'wn-h5-0' }))?.props.variant).toBe('primary')
   // Detected projects are folded away until asked for.
   expect(await pane.find({ key: 'dp-F:\\W\\Atlas' })).toBe(undefined)

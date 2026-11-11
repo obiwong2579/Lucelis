@@ -12,7 +12,7 @@ import { MUTED } from './fmt'
 import { view } from './model'
 import { TAB_LABEL, paneTree } from './pane'
 import { NOTES_URL, UPDATE_COMMANDS, compareVersions, installedVersion, latestVersion, whatsNew } from './update'
-import { claim, due, fileIo, leftOf, message, windowId } from './warn'
+import { claim, due, fileIo, leftOf, levelFor, message, windowId } from './warn'
 
 // Lucelis: a bar above the prompt (5H / 7D quota, prompt cache, context, the current
 // session, today's project usage) that opens into a session summary, plus the Lucelis
@@ -40,7 +40,7 @@ const DEFAULTS: Settings = {
   heat: 'tokens',
   show: { h5: true, d7: true, cache: true, ctx: true, resets: true, today: true, session: true, elapsed: true, trend: true, project: true, model: true },
   aliases: [],
-  warn: { h5: 30, d7: 30 },
+  warn: { h5: 30, d7: 30, toast: false, notify: false, back: false },
   exportDir: '',
 }
 const VIEW: PaneView = { period: null, heat: null, modelBy: 'tokens', project: null, tab: 'overview', help: false }
@@ -145,18 +145,46 @@ async function sync($: EngineInterface, full = false): Promise<string> {
   }
 }
 
+/** The surface the band last drew on: a reset-time notification is booked only from the desktop app. */
+let lastSurface: string | null = null
+/** "Quota is back" notifications this session booked: window kind -> the window it was for. */
+const booked = new Map<string, string>()
+
 /**
- * Low-quota warning (warn.ts): one session claims each window that dropped to its level and
- * shows one pop-up in the app. Never throws, never awaited before the event goes on.
+ * Low-quota warning (warn.ts). The red figure and logo need nothing here. When the person chose
+ * to be told (pop-up and / or Windows notification, both off by default), one session claims
+ * each window that dropped to its level and tells them. Never throws, never awaited.
  */
 async function checkWarn($: EngineInterface, list: readonly Window[]): Promise<void> {
   try {
-    const w = (await read($, settings)).warn ?? DEFAULTS.warn
-    if (!due(list, w, {}).length) return
+    const w = { ...DEFAULTS.warn, ...((await read($, settings)).warn ?? {}) }
+    // A booked "quota is back" that is no longer right (a new window, it recovered early, or turned off) is taken back.
+    for (const [kind, id] of [...booked]) {
+      const cur = list.find(x => x.kind === kind)
+      const lvl = levelFor(kind, w) ?? 0
+      if (!cur || windowId(cur) !== id || !lvl || leftOf(cur) > lvl + 10 || !(w.notify && w.back)) {
+        booked.delete(kind)
+        try { await $.ui.cancelNotify(`lucelis-back-${kind}`) } catch { /* no host */ }
+      }
+    }
+    if (!(w.toast || w.notify) || !due(list, w, {}).length) return
     const lv = await read($, live)
     const now = await $.clock.now()
     const won = await claim(fileIo($, `${(await paths($)).dir}\\warned.json`), lv?.sid ?? 'unknown', now, list, w)
-    for (const x of won) { try { await $.ui.toast(`Lucelis: ${message(x, now)}`, { timeoutMs: 10_000 }) } catch { /* no surface */ } }
+    for (const x of won) {
+      const text = message(x, now)
+      if (w.toast) { try { await $.ui.toast(`Lucelis: ${text}`, { timeoutMs: 10_000 }) } catch { /* no surface */ } }
+      if (w.notify) {
+        try { await $.ui.notify(text, { title: 'Lucelis', key: `lucelis-low-${windowId(x)}` }) } catch { /* turned off */ }
+        const at = x.resetsAt ? Date.parse(x.resetsAt) : NaN
+        if (w.back && lastSurface === 'desktop' && !Number.isNaN(at) && at > now) {
+          try {
+            await $.ui.notify(`Your ${x.kind === 'five_hour' ? '5-hour' : '7-day'} quota has reset.`, { title: 'Lucelis', key: `lucelis-back-${x.kind}`, at })
+            booked.set(x.kind, windowId(x))
+          } catch { /* not booked */ }
+        }
+      }
+    }
   } catch { /* a warning never holds the session up */ }
 }
 
@@ -372,6 +400,7 @@ export const register: Register = on => {
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     if (e.props.hasSurvey) return next(e)
+    lastSurface = e.surface ?? lastSurface
     const st = await read($, settings)
     if (!st.isOn) return next(e)
     const ui = $.ui.resolve(e)

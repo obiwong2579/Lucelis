@@ -12,7 +12,9 @@ import type { ClaimIo, Warned } from '../hooks/warn'
 import { DEFAULT_LEVEL, LEVELS, claim, due, forgetHandled, isLow, levelFor, message, prune, windowId } from '../hooks/warn'
 
 const NOW = Date.parse('2026-11-11T10:00:00Z')
-const WARN = { h5: 20, d7: 20 }
+const WARN = { h5: 20, d7: 20, toast: true, notify: false, back: false }
+/** Told by pop-up (off by default), at the default level. */
+const TOLD = { warn: { h5: 30, d7: 30, toast: true, notify: false, back: false } }
 const H5 = (used: number, resetsAt = '2026-11-11T12:30:00Z') => ({ kind: 'five_hour', percentUsed: used, resetsAt })
 const D7 = (used: number, resetsAt = '2026-11-14T08:00:00Z') => ({ kind: 'seven_day', percentUsed: used, resetsAt })
 
@@ -113,8 +115,8 @@ const bootWarn = async ($: any, on: any, opts: { warned?: Warned; settings?: unk
   return { calls, clock, measure }
 }
 
-test('crossing the level: one pop-up, not repeated in the same window; 7D warns on its own; never a Windows notification', async ($, on) => {
-  const { calls, measure } = await bootWarn($, on)
+test('crossing the level: one pop-up, not repeated in the same window; 7D warns on its own; no Windows notification unless asked', async ($, on) => {
+  const { calls, measure } = await bootWarn($, on, { settings: TOLD })
   await measure(H5(65), D7(10))
   expect(calls.toast.length).toBe(0)
   await measure(H5(75), D7(10))
@@ -129,13 +131,32 @@ test('crossing the level: one pop-up, not repeated in the same window; 7D warns 
 })
 
 test('a window another session already warned about stays quiet here', async ($, on) => {
-  const { calls, measure } = await bootWarn($, on, { warned: { [windowId(H5(90))]: { by: 's2', at: NOW } } })
+  const { calls, measure } = await bootWarn($, on, { settings: TOLD, warned: { [windowId(H5(90))]: { by: 's2', at: NOW } } })
   await measure(H5(90))
   expect(calls.toast.length).toBe(0)
 })
 
+test('by default: red, but no pop-up and no notification', async ($, on) => {
+  const { calls, measure } = await bootWarn($, on)
+  await measure(H5(90), D7(90))
+  expect(calls.toast.length + calls.notify.length).toBe(0)
+})
+
+test('Windows notification and "quota is back": booked at the reset time, taken back when the quota recovers', async ($, on) => {
+  const { calls, measure } = await bootWarn($, on, { settings: { warn: { ...WARN, toast: false, notify: true, back: true } } })
+  const band = await $.ui.mount({ plugin: 'lucelis', surface: 'desktop', component: 'AbovePrompt', props: { hasSurvey: false, isWorking: false, maxRows: 40, bodyColumns: 120, scroll: { offset: 0, bodyRows: 40 }, view: {} } })
+  await measure(H5(85))
+  expect(calls.toast.length).toBe(0)
+  expect(calls.notify.map(n => n.options?.key ?? n.key)).toEqual([`lucelis-low-${windowId(H5(85))}`, 'lucelis-back-five_hour'])
+  const back = calls.notify[1]
+  expect(back.options?.at ?? back.at).toBe(Date.parse('2026-11-11T12:30:00Z'))
+  await measure(H5(5)) // recovered early (95% left)
+  expect(calls.cancel).toEqual(['lucelis-back-five_hour'])
+  await band.unmount()
+})
+
 test('both quotas off: nothing at all, and no red', async ($, on) => {
-  const { calls, measure } = await bootWarn($, on, { settings: { warn: { h5: 0, d7: 0 } } })
+  const { calls, measure } = await bootWarn($, on, { settings: { warn: { h5: 0, d7: 0, toast: true, notify: true, back: true } } })
   await measure(H5(99), D7(99))
   expect(calls.toast.length + calls.notify.length).toBe(0)
 })

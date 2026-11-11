@@ -626,16 +626,23 @@ export const paneTree = (ui: El, a: Agg | null, v: View, pv: PaneView, st: Setti
 
     // ---- 3. Low-quota warning: one choice per quota
     const w = st.warn
-    out.push(group('h-wn', 'LOW-QUOTA WARNING', 'When a quota is low, its figure and the logo turn red, and you get one pop-up'))
+    out.push(group('h-wn', 'LOW-QUOTA WARNING', 'When a quota is low, its figure and the logo turn red. You can also be told'))
     for (const [k, label, name] of [['h5', '5H quota', '5-hour'], ['d7', '7D quota', '7-day']] as const) {
       const lvl = w[k] ?? 30
       out.push(setting(`wn-${k}`, label, [
         choice(`wn-${k}-0`, 'Off', lvl === 0, () => act.setSettings(x => ({ ...x, warn: { ...x.warn, [k]: 0 } }))),
         ...LEVELS.map(n => choice(`wn-${k}-${n}`, `${n}%`, lvl === n, () => act.setSettings(x => ({ ...x, warn: { ...x.warn, [k]: n } })))),
       ], lvl
-        ? `At ${lvl}% left or less, the ${name} figure and the logo turn red, and one pop-up says so (once per ${name} window, in one session only).`
-        : `Off: the ${name} figure is never red and there is no pop-up for it.`))
+        ? `At ${lvl}% left or less, the ${name} figure and the logo turn red.`
+        : `Off: the ${name} figure is never red and you are never told about it.`))
     }
+    const setWarn = (p: Partial<Settings['warn']>) => act.setSettings(x => ({ ...x, warn: { ...x.warn, ...p } }))
+    out.push(<Box key="wn-how" marginTop={1}><Text bold>How to tell you</Text></Box>)
+    out.push(note1('wn-how-n', 'Once per quota window, in one open session only. All off unless you turn them on.'))
+    out.push(<Box key="wn-gap" marginTop={1} />)
+    out.push(setting('wn2', 'Pop-up in the app', onOff('wt', !!w.toast, v => setWarn({ toast: v })), 'A small box in the conversation for about ten seconds: "5-hour quota 25% left · resets in 2h 30m".'))
+    out.push(setting('wn3', 'Windows notification', onOff('wf', !!w.notify, v => setWarn({ notify: v })), 'The same words as a Windows notification, so it reaches you when the app is in the background.'))
+    if (w.notify) out.push(setting('wn4', 'Quota is back', onOff('wb', !!w.back, v => setWarn({ back: v })), 'After a warning, a Windows notification is booked for the moment that quota resets (desktop app only).'))
 
     // ---- 4. This pane
     out.push(group('h-sd', 'DASHBOARD', 'How this pane opens'))
@@ -731,7 +738,7 @@ export const paneTree = (ui: El, a: Agg | null, v: View, pv: PaneView, st: Setti
     }
     out.push(<Box key="ab-p" marginTop={1} flexDirection="column">
       <Text key="p1" color={MUTED}>Local-only • No telemetry • No model calls • Network only when you press Check for updates</Text>
-      <Text key="p2" color={MUTED}>Windows · Copyright (c) 2026 obiwong2579 · PolyForm Noncommercial License 1.0.0</Text>
+      <Text key="p2" color={MUTED}>For Claude Code on Windows · PolyForm Noncommercial License 1.0.0</Text>
     </Box>)
   }
 
