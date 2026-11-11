@@ -28,15 +28,18 @@ async function fetchBounded($: EngineInterface, url: string, accept: string) {
 /** Semantic Versioning 2.0.0 (an optional leading "v" allowed): core, pre-release, build. */
 const SEMVER = /^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/
 
-export type SemVer = { core: [number, number, number]; pre: string[] }
+/** Numbers are kept as digit strings, so any size compares exactly (no float rounding). */
+export type SemVer = { core: [string, string, string]; pre: string[] }
 /** A version string read by SemVer rules, or null when it is not one (empty, "1.2", "1.0.0-", ...). */
 export const parseVersion = (v: unknown): SemVer | null => {
   if (typeof v !== 'string' || v.length > 256) return null
   const m = SEMVER.exec(v.trim())
-  if (!m) return null
-  const core = [Number(m[1]), Number(m[2]), Number(m[3])] as [number, number, number]
-  return core.every(Number.isSafeInteger) ? { core, pre: m[4] ? m[4].split('.') : [] } : null
+  return m ? { core: [m[1], m[2], m[3]], pre: m[4] ? m[4].split('.') : [] } : null
 }
+
+/** Compares two digit strings without leading zeros (as SemVer requires): longer is larger. */
+const cmpDigits = (p: string, q: string): number =>
+  p.length !== q.length ? (p.length > q.length ? 1 : -1) : p === q ? 0 : p > q ? 1 : -1
 
 /**
  * -1, 0 or 1 for a < b, a = b, a > b by SemVer precedence: core numbers numerically; a release
@@ -47,7 +50,7 @@ export const parseVersion = (v: unknown): SemVer | null => {
 export const compareVersions = (a: string, b: string): number => {
   const x = parseVersion(a), y = parseVersion(b)
   if (!x || !y) return 0
-  for (let i = 0; i < 3; i++) if (x.core[i] !== y.core[i]) return x.core[i] > y.core[i] ? 1 : -1
+  for (let i = 0; i < 3; i++) { const c = cmpDigits(x.core[i], y.core[i]); if (c) return c }
   if (!x.pre.length || !y.pre.length) return x.pre.length === y.pre.length ? 0 : x.pre.length ? -1 : 1
   for (let i = 0; i < Math.max(x.pre.length, y.pre.length); i++) {
     const p = x.pre[i], q = y.pre[i]
@@ -55,7 +58,7 @@ export const compareVersions = (a: string, b: string): number => {
     if (q === undefined) return 1
     if (p === q) continue
     const pn = /^\d+$/.test(p), qn = /^\d+$/.test(q)
-    if (pn && qn) return Number(p) > Number(q) ? 1 : -1
+    if (pn && qn) return cmpDigits(p, q)
     if (pn !== qn) return pn ? -1 : 1
     return p > q ? 1 : -1
   }

@@ -9,12 +9,18 @@ import type { Settings, Window } from '../types'
 //
 // HOW SESSIONS AGREE (one winner per window). Every open session sees the same figures at
 // about the same moment, each in its own process. The plugin file API has no exclusive
-// create, rename or delete, so a shared file cannot be a lock. Instead each quota window is
-// one directory, `~/.claude/lucelis/claims/<kind>-<reset minute>`, created with Windows
-// `mkdir` in a short `cmd.exe` run: creating a directory is atomic on NTFS, so exactly one
-// session's mkdir succeeds and that session tells the person; every other gets "already
-// exists". Windows are separate directories, so 5H and 7D never touch each other, and no
-// session ever rewrites another's record. The cmd run happens only when a window is due.
+// create, rename or delete, so a shared file cannot be a lock. Instead claims are directories,
+// `~/.claude/lucelis/claims/<kind>-<reset minute>`, created with Windows `mkdir` in a short
+// `cmd.exe` run: creating a directory is atomic on NTFS, so for any one name exactly one
+// session's mkdir succeeds; every other gets "already exists".
+// Sessions may report one window's reset time a minute or two apart (rounding, a few seconds
+// of drift), so a claim takes three names: its reset minute and the minute either side, in
+// ascending order, stopping at the first that already exists (that session loses). Two
+// reports up to 2 minutes apart share at least one name. Every session takes the shared names
+// in the same order, so the one that wins the lowest shared name also gets the others, and a
+// session that loses stops before taking any name a later winner needs: exactly one session
+// takes all three and tells the person. 5H and 7D names never overlap, and no session ever
+// rewrites another's record. The cmd run happens only when a window is due.
 //
 // WHAT IS AND IS NOT GUARANTEED.
 // - Claim: at most one session wins a given window (the mkdir), given one shared folder.
@@ -50,6 +56,11 @@ export const windowId = (w: Window): string => windowKey(w) ?? `${w.kind}-norese
 
 /** Two reports of one window may differ by a few seconds; claims this close are the same window. */
 const SAME_WINDOW_MIN = 2
+/** A claim's names: its reset minute and the minute either side, ascending ([] for a bad key). */
+export const claimNames = (key: string): string[] => {
+  const k = parseKey(key)
+  return k ? [k.minute - 1, k.minute, k.minute + 1].map(m => `${k.kind}-${m}`) : []
+}
 /** A claim is kept this long after its window reset, then removed with the next claim. */
 const KEEP_AFTER_RESET_MS = 60 * 60_000
 
@@ -110,20 +121,22 @@ export const message = (w: Window, now: number): string => {
 export type ClaimIo = {
   /** The claim names that exist now ([] when none or unreadable). */
   list: () => Promise<string[]>
-  /** Creates the claim `key` atomically, first removing `expired`. */
+  /** Takes the claim `key` (all its names, or none past the first taken one), first removing `expired`. */
   acquire: (key: string, expired: readonly string[]) => Promise<'won' | 'taken' | 'error'>
 }
 
 /**
- * The cmd.exe script that removes expired claims, then creates this one. Sent on stdin, so a
- * folder with spaces needs no command-line quoting; refused (null) for a path cmd would
- * expand or misread (% " ^ ! < > | & and line breaks).
+ * The cmd.exe script that removes expired claims, then makes this claim's names in ascending
+ * order. Exit 0: all made (won); 2: one already existed (taken, stops there); 3: a mkdir
+ * failed for another reason. Sent on stdin, so a folder with spaces needs no command-line
+ * quoting; refused (null) for a path cmd would expand or misread (% " ^ ! < > | & line breaks).
  */
 export const claimScript = (dir: string, key: string, expired: readonly string[]): string | null => {
   if (/[%"^!<>|&\r\n]/.test(dir) || !parseKey(key) || expired.some(e => !parseKey(e))) return null
   const lines = ['@echo off']
   for (const e of expired) lines.push(`rmdir "${dir}\\${e}" 2>nul`)
-  lines.push(`mkdir "${dir}\\${key}" 2>nul`, 'exit %errorlevel%', '')
+  for (const n of claimNames(key)) lines.push(`mkdir "${dir}\\${n}" 2>nul || if exist "${dir}\\${n}\\" (exit 2) else (exit 3)`)
+  lines.push('exit 0', '')
   return lines.join('\r\n')
 }
 
@@ -137,10 +150,9 @@ export function claimIo($: EngineInterface, dir: string): ClaimIo {
       if (!script) return 'error'
       try {
         // The claims folder made first, so concurrent mkdirs never race on creating it.
-        if (!(await $.fs.exists(dir))) await $.fs.write(`${dir}\\README.txt`, 'Lucelis low-quota warning claims: one folder per quota window. Safe to delete.\r\n')
+        if (!(await $.fs.exists(dir))) await $.fs.write(`${dir}\\README.txt`, 'Lucelis low-quota warning claims: a few folders per quota window. Safe to delete.\r\n')
         const r = await $.process.run(['cmd.exe', '/d', '/q'], { stdin: script, timeoutMs: 5_000 })
-        if (r.exitCode === 0) return 'won'
-        return (await $.fs.exists(`${dir}\\${key}`)) ? 'taken' : 'error'
+        return r.exitCode === 0 ? 'won' : r.exitCode === 2 ? 'taken' : 'error'
       } catch { return 'error' }
     },
   }

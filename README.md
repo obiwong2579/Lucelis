@@ -191,7 +191,7 @@ Lucelis is local-first: it calls no model, has no telemetry, and makes no networ
 |---|---|
 | `~/.claude/lucelis/cache-a.json`, `cache-b.json` | Aggregated counts per day, model and folder, plus per-session totals. |
 | Its plugin settings (Claude Code's plugin store) | Your bar settings and aliases; the last 5H / 7D figures and their reset times (for *last seen*); the last version you ran (for *Updated to*). |
-| `~/.claude/lucelis/claims/` | Only if you turned on a pop-up or notification: one empty folder per quota window you were told about, so your other open sessions do not tell you again. Old ones are removed an hour after their window resets. Making one runs a short `cmd.exe mkdir`. |
+| `~/.claude/lucelis/claims/` | Only if you turned on a pop-up or notification: three empty folders per quota window you were told about (its reset minute and the minute either side, so sessions whose reset times differ by up to 2 minutes still agree), so your other open sessions do not tell you again. Old ones are removed an hour after their window resets. Making them runs a short `cmd.exe mkdir`. If that cannot run at all, the session tells you anyway, so in that rare case you may be told more than once. |
 | `Lucelis-export-<date>.csv`, only when you press Export CSV | In your Documents folder, or the folder you set. |
 
 It never modifies a transcript. To remove everything it stored, delete `~/.claude/lucelis/`.

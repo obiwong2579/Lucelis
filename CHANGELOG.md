@@ -2,7 +2,7 @@
 
 ## 1.1.0 — 2026-11-11
 
-- **Low-quota warning.** One choice per quota, 5H and 7D: Off, 10, 20, 30 or 40% left (30% by default). At or under it, that figure and the logo turn red. Optional, all off by default: a pop-up in the app, a Windows notification, and a "quota is back" notification at the reset time; at most once per quota window, from one of your open sessions (they agree through one atomically created folder per window).
+- **Low-quota warning.** One choice per quota, 5H and 7D: Off, 10, 20, 30 or 40% left (30% by default). At or under it, that figure and the logo turn red. Optional, all off by default: a pop-up in the app, a Windows notification, and a "quota is back" notification at the reset time; at most once per quota window, from one of your open sessions (they agree through atomically created folders, even when their reset times differ by up to 2 minutes).
 - **Logo.** The mark now has three bars, shortest at the top, and a slightly larger glint set a little higher, so it reads at 16 px. While Claude works, the bars draw in one after the other (replacing the breathing glint). While a quota is at or under its warning level, the bars and the glint are red. Still otherwise.
 - **One low level.** The 5H and 7D figures on the bar now turn red at the same level as the logo and the warning (was: under 30%), so they never disagree. Green from 70%, yellow between.
 - **This week** on the Overview tab: this week so far against the same days of last week, with busiest day, top project and top model.

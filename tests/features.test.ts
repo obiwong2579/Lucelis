@@ -9,7 +9,7 @@ import { compactParts } from '../hooks/bar'
 import { GOOD, LOGO, LOGO_LOW, LOGO_WORKING, LOGO_WORKING_LOW, RED, YELLOW, adaptiveLogo, logoFor, quotaHealth } from '../hooks/fmt'
 import { UPDATE_COMMANDS, compareVersions, parseVersion } from '../hooks/update'
 import type { ClaimIo } from '../hooks/warn'
-import { DEFAULT_LEVEL, LEVELS, claim, claimScript, due, expiredKeys, forgetHandled, isClaimed, levelFor, lowAt, message, parseKey, resetMs, windowId, windowKey } from '../hooks/warn'
+import { DEFAULT_LEVEL, LEVELS, claim, claimNames, claimScript, due, expiredKeys, forgetHandled, isClaimed, levelFor, lowAt, message, parseKey, resetMs, windowId, windowKey } from '../hooks/warn'
 
 const NOW = Date.parse('2026-11-11T10:00:00Z')
 const WARN = { h5: 20, d7: 20, toast: true, notify: false, back: false }
@@ -75,18 +75,26 @@ test('claims: within two minutes is the same window; expiry uses the same instan
   expect(expiredKeys(['README.txt', 'five_hour@2026-11-11T08'], reset * 2)).toEqual([]) // never anything else
 })
 
-test('the claim script: removes expired claims, then one atomic mkdir; refuses paths cmd would misread', async () => {
-  const k = `five_hour-${MIN('2026-11-11T12:30:00Z')}`
+test('the claim script: removes expired claims, then three atomic mkdirs in ascending order; refuses paths cmd would misread', async () => {
+  const m = MIN('2026-11-11T12:30:00Z')
+  const k = `five_hour-${m}`
   const old = `seven_day-${MIN('2026-11-01T08:00:00Z')}`
   const dir = 'C:\\Users\\Test User\\.claude\\lucelis\\claims'
-  expect(claimScript(dir, k, [old])).toBe(`@echo off\r\nrmdir "${dir}\\${old}" 2>nul\r\nmkdir "${dir}\\${k}" 2>nul\r\nexit %errorlevel%\r\n`)
+  expect(claimNames(k)).toEqual([`five_hour-${m - 1}`, k, `five_hour-${m + 1}`])
+  expect(claimNames('junk')).toEqual([])
+  const mk = (n: string) => `mkdir "${dir}\\${n}" 2>nul || if exist "${dir}\\${n}\\" (exit 2) else (exit 3)\r\n`
+  expect(claimScript(dir, k, [old])).toBe(`@echo off\r\nrmdir "${dir}\\${old}" 2>nul\r\n${claimNames(k).map(mk).join('')}exit 0\r\n`)
   for (const bad of ['C:\\a%PATH%b', 'C:\\a"b', 'C:\\a&b', 'C:\\a^b', 'C:\\a!b', 'C:\\a|b', 'C:\\a>b', 'C:\\a\r\nb']) expect(claimScript(bad, k, [])).toBe(null)
   expect(claimScript(dir, 'five_hour-1 & del x', [])).toBe(null)
   expect(claimScript(dir, k, ['..\\..\\Windows'])).toBe(null)
 })
 
-/** A claims folder shared by "sessions" in this test: mkdir succeeds for the first caller only. */
-const memIo = (dirs: Set<string>, opts: { fail?: 'list' | 'acquire' | 'error' } = {}): ClaimIo & { made: string[] } => {
+/**
+ * A claims folder shared by "sessions" in this test, run as the claim script does: each mkdir
+ * succeeds for the first caller only, names in ascending order, stopping at the first taken.
+ * `yields` lets other sessions run between two mkdirs (as separate processes may).
+ */
+const memIo = (dirs: Set<string>, opts: { fail?: 'list' | 'acquire' | 'error'; yields?: () => number } = {}): ClaimIo & { made: string[] } => {
   const io = {
     made: [] as string[],
     list: async () => { if (opts.fail === 'list') throw new Error('locked'); return [...dirs] },
@@ -94,19 +102,23 @@ const memIo = (dirs: Set<string>, opts: { fail?: 'list' | 'acquire' | 'error' } 
       if (opts.fail === 'acquire') throw new Error('cmd missing')
       if (opts.fail === 'error') return 'error' as const
       for (const e of expired) dirs.delete(e)
-      if (dirs.has(key)) return 'taken' as const
-      dirs.add(key); io.made.push(key)
+      for (const n of claimNames(key)) {
+        for (let i = opts.yields?.() ?? 0; i > 0; i--) await Promise.resolve()
+        if (dirs.has(n)) return 'taken' as const
+        dirs.add(n); io.made.push(n)
+      }
       return 'won' as const
     },
   }
   return io
 }
+const allNames = (...keys: (string | null)[]) => keys.flatMap(k => claimNames(k!)).sort()
 
 test('claim: one winner per window; 5H and 7D apart; never repeated in a session; restarts and failures', async () => {
   const shared = new Set<string>()
   forgetHandled()
   expect((await claim(memIo(shared), NOW, [H5(90), D7(90)], WARN)).map(w => w.kind)).toEqual(['five_hour', 'seven_day'])
-  expect([...shared].sort()).toEqual([windowKey(D7(90)), windowKey(H5(90))].sort())
+  expect([...shared].sort()).toEqual(allNames(windowKey(D7(90)), windowKey(H5(90))))
   // The same session never repeats a window, whatever the folder says.
   expect((await claim(memIo(new Set()), NOW, [H5(90)], WARN)).length).toBe(0)
   // Another session (or this one after a restart): both windows are taken, so it stays quiet.
@@ -169,9 +181,33 @@ test('claim: many sessions at once, interleaved however the scheduler likes: exa
   }
 })
 
+test('claim: sessions reporting one window up to 2 minutes apart still have exactly one winner, whatever the interleaving', async () => {
+  // Reset times as different sessions might report one window: seconds of drift that round to
+  // different minutes, and up to 2 minutes apart.
+  const resets = ['2026-11-11T12:30:29Z', '2026-11-11T12:30:31Z', '2026-11-11T12:31:10Z', '2026-11-11T12:32:00Z', '2026-11-11T12:30:00Z']
+  let seed = 7
+  const rand = () => (seed = (seed * 1103515245 + 12345) % 2147483648) % 4
+  for (let round = 0; round < 200; round++) {
+    const shared = new Set<string>()
+    const won = await Promise.all(Array.from({ length: 12 }, async (_, i) => {
+      const w = H5(90, resets[(i + round) % resets.length])
+      const io = memIo(shared, { yields: rand })
+      for (let j = rand(); j > 0; j--) await Promise.resolve()
+      const names = await io.list()
+      return !isClaimed(names, windowKey(w)!) && (await io.acquire(windowKey(w)!, [])) === 'won'
+    }))
+    expect(won.filter(Boolean).length).toBe(1)
+  }
+  // Windows of one kind that are really different (hours apart) never block each other.
+  const shared = new Set<string>()
+  expect(await memIo(shared).acquire(windowKey(H5(90, '2026-11-11T12:30:00Z'))!, [])).toBe('won')
+  expect(await memIo(shared).acquire(windowKey(H5(90, '2026-11-11T17:30:00Z'))!, [])).toBe('won')
+  expect(await memIo(shared).acquire(windowKey(D7(90, '2026-11-11T12:31:00Z'))!, [])).toBe('won')
+})
+
 // ---------------------------------------------------------------- warning in a session
 
-const bootWarn = async ($: any, on: any, opts: { claims?: string[]; claimFails?: boolean; settings?: unknown; surface?: 'desktop' | 'terminal'; fetch?: { status: number; ok: boolean; text: string }; history?: boolean } = {}) => {
+const bootWarn = async ($: any, on: any, opts: { claims?: string[]; claimFails?: boolean; listEmpty?: boolean; settings?: unknown; surface?: 'desktop' | 'terminal'; fetch?: { status: number; ok: boolean; text: string }; history?: boolean } = {}) => {
   forgetHandled()
   const dirs = new Set<string>(opts.claims ?? [])
   const calls = { toast: [] as string[], notify: [] as any[], cancel: [] as string[], fetch: [] as string[], copied: [] as string[], scripts: [] as string[], dirs }
@@ -190,19 +226,20 @@ const bootWarn = async ($: any, on: any, opts: { claims?: string[]; claimFails?:
   on('fs.read', (_: any, e: any) => ({ value: String(e.path).endsWith('plugin.json') ? '{"version":"1.1.0"}' : hist }))
   on('fs.write', () => ({ value: undefined }))
   on('fs.stat', () => ({ value: { kind: 'file', size: hist.length || 2, mtimeMs: 1, isLink: false } }))
-  on('fs.list', (_: any, e: any) => ({ value: String(e.path).endsWith('\\claims') ? [...dirs].map(name => ({ name, kind: 'dir', size: 0, mtimeMs: 0, isLink: false })) : [] }))
-  // cmd.exe as Windows runs the claim script: rmdir each line, then mkdir fails if it exists.
+  on('fs.list', (_: any, e: any) => ({ value: !opts.listEmpty && String(e.path).endsWith('\\claims') ? [...dirs].map(name => ({ name, kind: 'dir', size: 0, mtimeMs: 0, isLink: false })) : [] }))
+  // cmd.exe as Windows runs the claim script: rmdir each line; each mkdir stops the script with
+  // exit 2 if that folder exists; exit 0 at the end.
   on('process.run', (_: any, e: any) => {
     const script = String(e.init?.stdin ?? e.stdin ?? '')
     calls.scripts.push(script)
     if (opts.claimFails) return { value: { exitCode: 9009, stdout: '', stderr: 'not found', isStdoutTruncated: false } }
     let code = 0
     for (const line of script.split('\r\n')) {
-      const m = /^(rmdir|mkdir) "(.+)" 2>nul$/.exec(line)
+      const m = /^(rmdir|mkdir) "([^"]+)" 2>nul/.exec(line)
       if (!m) continue
       const name = claimOf(m[2])!
       if (m[1] === 'rmdir') dirs.delete(name)
-      else if (dirs.has(name)) code = 1
+      else if (dirs.has(name)) { code = 2; break }
       else dirs.add(name)
     }
     return { value: { exitCode: code, stdout: '', stderr: '', isStdoutTruncated: false } }
@@ -239,13 +276,23 @@ test('crossing the level: one pop-up, not repeated in the same window; 7D warns 
   expect(calls.toast.length).toBe(2)
   expect(calls.toast[1]).toContain('7-day quota 15% left')
   expect(calls.notify.length).toBe(0)
-  expect([...calls.dirs].sort()).toEqual([windowKey(D7(85)), windowKey(H5(90))].sort())
+  expect([...calls.dirs].sort()).toEqual(allNames(windowKey(D7(85)), windowKey(H5(90))))
   expect(calls.scripts.length).toBe(2) // one claim per window, no more
 })
 
 test('a window another session already claimed stays quiet here; a failed claim still warns once', async ($, on) => {
   const { calls, measure } = await bootWarn($, on, { settings: TOLD, claims: [windowKey(H5(90))!] })
   await measure(H5(90))
+  expect(calls.toast.length).toBe(0)
+})
+
+test('another session won the same window with a reset time a minute apart: quiet here (cmd exit 2)', async ($, on) => {
+  // The other session's claim, made from 12:31; this session reads 12:30. The folder list is
+  // stale here (made after this session listed), so only the mkdir decides.
+  const other = claimNames(windowKey(H5(90, '2026-11-11T12:31:00Z'))!)
+  const { calls, measure } = await bootWarn($, on, { settings: TOLD, claims: other, listEmpty: true })
+  await measure(H5(90))
+  expect(calls.scripts.length).toBe(1)
   expect(calls.toast.length).toBe(0)
 })
 
@@ -356,7 +403,16 @@ test('versions compare by SemVer precedence; malformed versions are never newer'
     expect(compareVersions(bad, '1.0.0')).toBe(0)
     expect(compareVersions('1.0.0', bad)).toBe(0)
   }
-  expect(parseVersion('9007199254740993.0.0')).toBe(null)
+  // Numbers past 2^53 compare exactly (as digit strings), not as rounded floats.
+  gt('1.0.0-rc.9007199254740993', '1.0.0-rc.9007199254740992')
+  gt('1.0.0-99999999999999999999999', '1.0.0-99999999999999999999998')
+  gt('1.0.0-100000000000000000000000', '1.0.0-99999999999999999999999')
+  gt('9007199254740993.0.0', '9007199254740992.0.0')
+  gt('1.9007199254740993.0', '1.9007199254740992.0')
+  gt('1.0.18446744073709551617', '1.0.18446744073709551616')
+  gt('1.0.0-alpha.99999999999999999999.1', '1.0.0-alpha.99999999999999999999.0')
+  expect(compareVersions('1.0.0-rc.9007199254740993', '1.0.0-rc.9007199254740993')).toBe(0)
+  expect(parseVersion('9007199254740993.0.0')).toEqual({ core: ['9007199254740993', '0', '0'], pre: [] })
   expect(parseVersion(42)).toBe(null)
   expect(UPDATE_COMMANDS).toBe('/plugin marketplace update lucelis\n/plugin update lucelis@lucelis')
 })
