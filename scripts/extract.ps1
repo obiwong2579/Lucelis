@@ -17,7 +17,9 @@
 #   P  sid  uuid  epochMs  localDay  localHour  cwd
 #   C  sid  uuid  epochMs
 #   T  sid  title
-#   X  path  reason        (a line that did not parse; counted, never fatal)
+#   X  path  reason        (a line that did not parse, reason 'parse'; or a reply record
+#                           whose shape is not the one this extractor knows, reason 'shape':
+#                           counted, never fatal, so a format change is noticed, not silent)
 # A record is emitted only from the file that owns its sessionId (forks and
 # resumes copy earlier records into new files under the ORIGINAL sessionId),
 # unless that session has no file of its own (an orphan copy).
@@ -106,15 +108,20 @@ foreach ($f in $req['files']) {
         if ($t -eq 'custom-title') { if ($sid -eq $owner -and $o['customTitle']) { $title = Clean ([string]$o['customTitle']) }; continue }
         if (-not $mine) { continue }
         if ($t -eq 'assistant') {
-          $m = $o['message']; if ($null -eq $m) { continue }
-          $u = $m['usage']; if ($null -eq $u) { continue }
+          $m = $o['message']
+          if ($m -isnot [Collections.Generic.Dictionary[string, object]]) { [void]$out.Append("X`t$rel`tshape`n"); continue }
+          $u = $m['usage']
+          if ($u -isnot [Collections.Generic.Dictionary[string, object]]) { [void]$out.Append("X`t$rel`tshape`n"); continue }
           $model = [string]$m['model']; if ($model -eq '<synthetic>') { continue }
-          $id = [string]$m['id']; if (-not $id) { $id = [string]$o['requestId'] }; if (-not $id) { continue }
+          if (-not ($u.ContainsKey('input_tokens') -or $u.ContainsKey('output_tokens'))) { [void]$out.Append("X`t$rel`tshape`n"); continue }
+          $id = [string]$m['id']; if (-not $id) { $id = [string]$o['requestId'] }
+          if (-not $id -or -not $sid) { [void]$out.Append("X`t$rel`tshape`n"); continue }
+          try { $tc = TimeCols ([string]$o['timestamp']) } catch { [void]$out.Append("X`t$rel`tshape`n"); continue }
           $in = Num $u['input_tokens']; $op = Num $u['output_tokens']; $cw = Num $u['cache_creation_input_tokens']; $cr = Num $u['cache_read_input_tokens']
           if (($in + $op + $cw + $cr) -eq 0) { continue }   # streaming placeholder copy
           if (-not $seen.Add($id)) { continue }              # one row per content block: count the message once
           $side = if ($o['isSidechain']) { 1 } else { 0 }
-          [void]$out.Append("A`t$sid`t$id`t$(TimeCols ([string]$o['timestamp']))`t$(Clean $model)`t$in`t$op`t$cw`t$cr`t$(Clean ([string]$o['cwd']))`t$side`n")
+          [void]$out.Append("A`t$sid`t$id`t$tc`t$(Clean $model)`t$in`t$op`t$cw`t$cr`t$(Clean ([string]$o['cwd']))`t$side`n")
         } elseif ($t -eq 'user') {
           $org = $o['origin']
           if ($org -is [Collections.Generic.Dictionary[string, object]] -and [string]$org['kind'] -eq 'human' -and -not $o.ContainsKey('toolUseResult') -and -not $o['isSidechain']) {

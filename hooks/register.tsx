@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { Ctx, Live, PaneView, Settings, TurnFacts, UpdateState, Window } from '../types'
+import type { Ctx, Live, News, PaneView, Settings, TurnFacts, UpdateState, Window } from '../types'
 import { barLayout, compactRow, snapshot } from './bar'
 import type { CacheWatch } from './cachewatch'
 import { contextMeasured, requestSent, sessionReturned, turnEnded } from './cachewatch'
@@ -11,7 +11,7 @@ import { localDay, makeResolver } from './agg'
 import { MUTED } from './fmt'
 import { view } from './model'
 import { TAB_LABEL, paneTree } from './pane'
-import { UPDATE_COMMANDS, compareVersions, installedVersion, latestVersion } from './update'
+import { NOTES_URL, UPDATE_COMMANDS, compareVersions, installedVersion, latestVersion, whatsNew } from './update'
 import { claim, due, fileIo, leftOf, levelFor, message, windowId } from './warn'
 
 // Lucelis: a bar above the prompt (5H / 7D quota, prompt cache, context, the current
@@ -56,6 +56,7 @@ const rev = atom({ plugin: 'lucelis', key: 'rev' } as const, 0)
 const note = atom({ plugin: 'lucelis', key: 'note' } as const, '')
 const paneView = atom({ plugin: 'lucelis', key: 'view' } as const, VIEW, { shape: 'view-2' })
 const upd = atom({ plugin: 'lucelis', key: 'update' } as const, { phase: 'idle', installed: '' } as UpdateState)
+const news = atom({ plugin: 'lucelis', key: 'news' } as const, null as News | null)
 
 /** The usage windows as plain values the state can hold (the engine's list is read-only). */
 const plainWindows = (list: readonly Window[]): Window[] => {
@@ -183,6 +184,53 @@ async function checkWarn($: EngineInterface, list: readonly Window[]): Promise<v
   } catch { /* a warning never holds the session up */ }
 }
 
+/**
+ * After an update: the first session of a new version shows a quiet line on Overview ("Updated
+ * to X: ..."), from the CHANGELOG.md that ships with the plugin (no network). The first install
+ * records its version and shows nothing; a downgrade is recorded silently.
+ */
+async function checkNews($: EngineInterface): Promise<void> {
+  try {
+    const installed = await installedVersion($)
+    if (!installed) return
+    const seen = await $.store.get('seenVersion')
+    if (seen === installed) return
+    await $.store.set('seenVersion', installed)
+    if (typeof seen !== 'string' || compareVersions(installed, seen) <= 0) return
+    let summary = ''
+    try { summary = whatsNew(await $.fs.read(`${$.plugin.root}\\CHANGELOG.md`), installed) } catch { /* no notes shipped */ }
+    await update($, news, () => ({ version: installed, summary, copied: false }))
+  } catch { /* never holds the session up */ }
+}
+
+/** The last 5H / 7D figures, kept so a new session can show them as "last seen" until it has its own. */
+let seenSig = ''
+async function saveSeen($: EngineInterface, list: readonly Window[]): Promise<void> {
+  try {
+    const keep = list.filter(w => (w.kind === 'five_hour' || w.kind === 'seven_day') && w.resetsAt)
+    // Written only when a whole-number figure or a window changes, not on every report.
+    const sig = keep.map(w => `${w.kind}:${leftOf(w)}:${windowId(w)}`).join('|')
+    if (!keep.length || sig === seenSig) return
+    seenSig = sig
+    await $.store.set('lastSeen', keep.map(({ kind, percentUsed, resetsAt }) => ({ kind, percentUsed, resetsAt })))
+  } catch { /* not kept this time */ }
+}
+
+/** The kept figures whose window has not reset yet, marked stale; none once the window has passed. */
+async function loadSeen($: EngineInterface, now: number): Promise<Window[]> {
+  try {
+    const v = await $.store.get('lastSeen')
+    if (!Array.isArray(v)) return []
+    const out: Window[] = []
+    for (const w of v as Window[]) {
+      const at = typeof w?.resetsAt === 'string' ? Date.parse(w.resetsAt) : NaN
+      if ((w.kind === 'five_hour' || w.kind === 'seven_day') && typeof w.percentUsed === 'number' && !Number.isNaN(at) && at > now)
+        out.push({ kind: w.kind, percentUsed: w.percentUsed, resetsAt: w.resetsAt, stale: true })
+    }
+    return out
+  } catch { return [] }
+}
+
 /** Check for updates: the one network request Lucelis makes, and only on the person's press. */
 async function checkUpdate($: EngineInterface): Promise<void> {
   const installed = await installedVersion($)
@@ -237,7 +285,10 @@ export const register: Register = on => {
     const st = await loadSettings($)
     await update($, settings, () => st)
     const u = await $.session.usage()
-    await update($, windows, () => plainWindows(u.rateLimits))
+    // No figures yet in a new session: show the last ones seen, marked so, while their window lasts.
+    const own = plainWindows(u.rateLimits)
+    const shown = own.length ? own : await loadSeen($, await $.clock.now())
+    await update($, windows, () => shown)
     await update($, ctx, () => ctxOf(u.context))
     const sid = await $.session.id()
     await update($, live, () => ({ sid, startedAt: u.startedAt || null }))
@@ -249,6 +300,7 @@ export const register: Register = on => {
     ] as const) await $.command.register({ name, description })
     await ensureLoaded($)
     void sync($)
+    void checkNews($)
     // A redraw a minute keeps countdowns current; it reads no history.
     $.clock.every(TICK_MS, () => $.ui.invalidate('ui.render'))
     return r
@@ -259,6 +311,7 @@ export const register: Register = on => {
       const list = plainWindows(e.rateLimits)
       await update($, windows, () => list)
       void checkWarn($, list)
+      void saveSeen($, list)
     }
     if (e.changed.includes('context')) {
       const c = ctxOf(e.context)
@@ -317,6 +370,8 @@ export const register: Register = on => {
     const model = e.usage?.model ?? (await $.session.model())
     const now = await $.clock.now()
     await update($, ctx, c => ctxOf(usage.context) ?? c)
+    // The first reply: "last seen" figures give way to this session's own (or to none).
+    if ((await read($, windows)).some(w => w.stale)) await update($, windows, () => plainWindows(usage.rateLimits))
     await update($, cache, w => turnEnded(w, now, e.durationMs, { context: usage.context.tokens, window: usage.context.window, model }))
     const u = e.usage
     if (u) {
@@ -415,6 +470,13 @@ export const register: Register = on => {
       copyUpdate: () => { void copyUpdate($) },
       update: await read($, upd),
       exportCsv: (from, to) => { void exportCsv($, from, to) },
+      news: await read($, news),
+      dismissNews: () => { void update($, news, () => null) },
+      copyNotes: () => { void (async () => {
+        let ok = false
+        try { ok = (await $.ui.copy({ text: NOTES_URL })).isCopied } catch { ok = false }
+        await update($, news, n => (n ? { ...n, copied: ok } : n))
+      })() },
     })
   })
 

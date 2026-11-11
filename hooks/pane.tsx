@@ -7,9 +7,9 @@
 // of fixed-width cells, so a narrow pane gets one column and a wide one several;
 // tables switch to two-line rows when narrow. No inner scroll areas.
 
-import type { PaneView, Settings, UpdateState } from '../types'
+import type { News, PaneView, Settings, UpdateState } from '../types'
 import type { Agg, Period, Resolver, Slice, Stats } from './agg'
-import { PERIODS, PERIOD_LABEL, addDays, change, daysBetween, firstDay, localDay, makeResolver, mean, median, patterns, rangeOf, stats, streaks, weekRange, weekday } from './agg'
+import { FORMAT_NOTE, PERIODS, PERIOD_LABEL, addDays, formatSuspect, change, daysBetween, firstDay, localDay, makeResolver, mean, median, patterns, rangeOf, stats, streaks, weekRange, weekday } from './agg'
 import type { ItemState } from './bar'
 import { ITEMS, barLayout } from './bar'
 import type { View } from './model'
@@ -30,6 +30,10 @@ type Act = {
   update: UpdateState
   /** Writes the CSV for the period shown. */
   exportCsv: (from: string, to: string) => void
+  /** "Updated to X" after an update, until dismissed. Full notes copies the link (no pop-up). */
+  news?: News | null
+  dismissNews?: () => void
+  copyNotes?: () => void
 }
 
 /** Shown by the "? Terms" toggle: what the figures mean and how sure they are. */
@@ -48,6 +52,8 @@ export const HELP = [
   `Next-message costs are API-price equivalent estimates (input side only, excluding your new message and output), not your bill. Prices as of ${PRICES_AS_OF}: ${PRICES_SOURCE}.`,
   'Project = an alias you set, else the git repository root, else the first folder under the directory Claude sessions start in.',
   'Responses with any count over 5M tokens are treated as damaged data and left out (a corruption guard, not a model limit).',
+  'A narrow bar goes tight before it leaves anything out: "5H 76 7D 52 WARM CTX 41" (no % signs), then one-letter labels ("W" warm, "C" cold, "C 41" context). Reset times and cache minutes are then in More.',
+  'Dimmed 5H / 7D figures marked "last seen" are from an earlier session, shown until this one has its own. They are never coloured or warned about.',
 ]
 
 export const TABS: PaneView['tab'][] = ['overview', 'session', 'projects', 'models', 'patterns', 'settings']
@@ -240,6 +246,14 @@ export const paneTree = (ui: El, a: Agg | null, v: View, pv: PaneView, st: Setti
 
   // ---------------------------------------------------------------- Overview
   if (pv.tab === 'overview') {
+    const n = act.news
+    if (n) {
+      out.push(row('news', [
+        <Text key="t" color={MUTED}>{`Updated to ${n.version}${n.summary ? `: ${n.summary}` : ''}.`}</Text>,
+        <Button key="news-notes" plain label={n.copied ? 'Link copied' : 'Full notes'} onPress={() => act.copyNotes?.()} />,
+        <Button key="news-x" plain label="Dismiss" onPress={() => act.dismissNews?.()} />,
+      ]))
+    }
     out.push(section('h-ov', `OVERVIEW · ${PERIOD_LABEL[period]}`, rg.prev ? `trend vs the previous ${nDays} days` : undefined))
     const sk = streaks(a, today)
     const topModel = [...cur.byModel.entries()].sort((x, y) => y[1].tokens - x[1].tokens)[0]
@@ -675,7 +689,7 @@ export const paneTree = (ui: El, a: Agg | null, v: View, pv: PaneView, st: Setti
       <Button key="rebuild" variant="secondary" label="Rebuild cache" onPress={act.rebuild} />,
     ]))
     out.push(note1('dd-s', note ? `Last result: ${note}` : 'Last result: none yet', note.startsWith('refresh failed') ? WARM : TEXT))
-    out.push(note1('dd-n', `Cache ~/.claude/lucelis/cache-a.json + cache-b.json · parser v${a.v} · built ${new Date(a.built).toISOString().slice(0, 16).replace('T', ' ')} UTC${a.parseErrors ? ` · ${a.parseErrors} unreadable lines skipped` : ''}${a.flagged ? ` · ${a.flagged} damaged records excluded` : ''}`))
+    out.push(note1('dd-n', `Cache ~/.claude/lucelis/cache-a.json + cache-b.json · parser v${a.v} · built ${new Date(a.built).toISOString().slice(0, 16).replace('T', ' ')} UTC${a.parseErrors ? ` · ${a.parseErrors} unreadable lines skipped` : ''}${a.shape ? ` · ${a.shape} replies in an unknown format` : ''}${a.flagged ? ` · ${a.flagged} damaged records excluded` : ''}`))
     out.push(section('h-ex', 'EXPORT'))
     out.push(row('ex1', [
       <Button key="export" variant="secondary" label={`Export CSV · ${PERIOD_LABEL[period]}`} onPress={() => act.exportCsv(rg.from, rg.to)} />,
@@ -704,6 +718,7 @@ export const paneTree = (ui: El, a: Agg | null, v: View, pv: PaneView, st: Setti
   }
 
   if (pv.tab !== 'settings' && note) out.push(<Box key="foot" marginTop={1}><Text color={MUTED}>{`History: ${note}`}</Text></Box>)
+  if (formatSuspect(a)) out.push(<Box key="format" marginTop={note && pv.tab !== 'settings' ? 0 : 1}><Text color={WARM}>{FORMAT_NOTE}</Text></Box>)
   return <Box flexDirection="column" paddingX={1}>{out}</Box>
 
   // ---- the next-message cost table (Session and Models)

@@ -37,6 +37,8 @@ Lucelis has three levels. Each one opens the next.
 - **The Lucelis mark** leads the bar in the desktop app. Its two bars draw in while Claude is working on a reply and it is still otherwise. Its glint turns red while a quota is at or under your warning level.
 - **Low-quota warning.** When what is left of the 5-hour or 7-day quota drops to your level (30% by default), its figure on the bar and the logo glint turn red, and Lucelis tells you once for that quota window: a short pop-up in the app, and a Windows notification if you turn that on. With several sessions open, only one of them warns.
 - **One or two lines.** On a wide window everything sits on one row; on a narrow one, items that do not fit move to a second row.
+- **Tight on a narrow window.** Before 5H, 7D, cache or context would be left out, the row gets shorter instead: `5H 76 7D 52 WARM CTX 41` (no % signs or separators; the colours keep their meaning), then `5H 76 7D 52 W C 41`. Reset times and cache minutes are then in More. 5H and 7D are never left out.
+- **Last seen after a restart.** Until a new session's first reply, the bar shows the last 5H and 7D figures from an earlier session, dimmed and marked *last seen*, while their window has not reset. They are never coloured or warned about, and the live figures replace them on the first reply.
 - **Your choice of items.** Every item has its own switch, and Settings tells you why an item is not showing (off, no room, no data yet).
 
 ### 2. More ▾ (a summary of the current session)
@@ -66,6 +68,10 @@ A pane beside the chat, built from your own local history:
 | Settings | Everything below, plus cache status, a manual refresh, CSV export and Check for updates. |
 
 **? Terms** in the pane explains every figure. Periods: today, 7 days, 30 days, 90 days, 1 year, all.
+
+After an update, the first session shows one quiet line at the top of Overview, *Updated to X.Y.Z*, with the main changes from the notes that ship with the plugin. **Full notes** copies the link to this changelog; **Dismiss** hides it. A first install shows nothing.
+
+If many replies in your history are in a shape Lucelis does not recognise (a change in Claude Code's transcript format), the pane says so at the bottom: *Some history could not be read; Claude Code's format may have changed. Totals may be low.*
 
 ## Compatibility
 
@@ -184,7 +190,7 @@ Lucelis calls no model and has no telemetry. It makes no network request on its 
 | It writes | What |
 |---|---|
 | `~/.claude/lucelis/cache-a.json`, `cache-b.json` | Aggregated counts per day, model and folder, plus per-session totals. |
-| Its plugin settings (Claude Code's plugin store) | Your bar settings and aliases. |
+| Its plugin settings (Claude Code's plugin store) | Your bar settings and aliases; the last 5H / 7D figures and their reset times (for *last seen*); the last version you ran (for *Updated to*). |
 | `~/.claude/lucelis/warned.json` | Which quota windows were already warned about, so several sessions warn only once. Cleared as windows reset. |
 | `Lucelis-export-<date>.csv`, only when you press Export CSV | In your Documents folder, or the folder you set. |
 
@@ -225,7 +231,8 @@ Then delete `~/.claude/lucelis/` if you want the cache gone too.
 | Figures look wrong after moving or renaming folders | `/lucelis-rebuild`. |
 | An item is on but not on the bar | Settings shows why: no room at this width, Minimal mode, or no data yet. Turn on Wrap to a second row, or close the pane (it narrows the bar). |
 | Your model shows "no price on record" | Its id is not in `hooks/prices.ts` yet. Nothing is estimated for it. |
-| Fewer items right after a restart | Claude has not reported 5H / 7D yet. They return after the next reply. |
+| Fewer items right after a restart | Claude has not reported its figures yet. 5H / 7D show as *last seen* while their window lasts; everything returns after the next reply. |
+| "Claude Code's format may have changed" at the bottom of the pane | Many replies in your history were in a shape this version does not read, so totals may be low. Check for updates. |
 
 ## Known limitations
 
@@ -233,7 +240,7 @@ Then delete `~/.claude/lucelis/` if you want the cache gone too.
 - The chat column holds roughly 80 to 90 characters on any monitor, so one row cannot show every item. Use Wrap to a second row or Detailed.
 - At most two rows. On a very narrow window the lowest-priority items are left out, and Settings names them.
 - The cache state and the cost figures are estimates, as described above.
-- Custom titles and history are read from Claude Code's transcript format; a future format change may need an update.
+- Custom titles and history are read from Claude Code's transcript format; a future format change may need an update. The pane says so when it sees one.
 
 ## Development
 

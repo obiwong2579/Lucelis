@@ -10,7 +10,8 @@ import { compose, costTable } from './prices'
 import type { CacheWatch } from './cachewatch'
 import { isKnown, marksFor, stateAt } from './cachewatch'
 
-export type Quota = { kind: string; left: number; resetIn: number | null }
+/** `stale`: last seen in an earlier session, not this one's own figure yet. */
+export type Quota = { kind: string; left: number; resetIn: number | null; stale?: boolean }
 
 export type View = {
   quotas: Quota[]
@@ -87,7 +88,7 @@ export const view = (i: Inputs): View => {
   const resolve = makeResolver(a ?? { sess: {}, git: {} } as unknown as Agg, i.aliases)
   const quotas = [...i.windows]
     .sort((x, y) => (ORDER[x.kind] ?? 9) - (ORDER[y.kind] ?? 9))
-    .map(w => ({ kind: w.kind, left: leftOf(w), resetIn: w.resetsAt && !Number.isNaN(Date.parse(w.resetsAt)) ? Date.parse(w.resetsAt) - i.now : null }))
+    .map(w => ({ kind: w.kind, left: leftOf(w), resetIn: w.resetsAt && !Number.isNaN(Date.parse(w.resetsAt)) ? Date.parse(w.resetsAt) - i.now : null, ...(w.stale ? { stale: true } : {}) }))
 
   // Cache: the inferred warm/cold state; the cached/reusable split from the last request on record.
   let cache: View['cache'] = null

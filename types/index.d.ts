@@ -1,5 +1,6 @@
 /** One usage window as the engine reports it: which, how much used (0-100), when it resets. */
-export type Window = { kind: string; percentUsed: number; resetsAt?: string }
+/** `stale`: a figure from an earlier session ("last seen"), shown until this session has its own; never warned about. */
+export type Window = { kind: string; percentUsed: number; resetsAt?: string; stale?: boolean }
 
 /** One model's last main-thread request: when (epoch ms) and the context it held. */
 export type ModelMark = { at: number; ctx: number }
@@ -63,6 +64,9 @@ export type PaneView = {
 /** Where a Check for updates stands (Settings tab). */
 export type UpdateState = { phase: 'idle' | 'checking' | 'latest' | 'newer' | 'failed' | 'copied'; installed: string; latest?: string; detail?: string }
 
+/** The quiet "Updated to X" line on Overview after an update: one session, until dismissed. */
+export type News = { version: string; summary: string; copied: boolean }
+
 /** The live context window, from session.measure: the engine's own figures. */
 export type Ctx = { tokens: number; window: number; percent: number | null }
 
@@ -85,6 +89,7 @@ declare module 'claude-code' {
       settings: Shaped<Settings>
       view: Shaped<PaneView>
       update: UpdateState
+      news: News | null
     }
   }
 }

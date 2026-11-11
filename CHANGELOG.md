@@ -8,6 +8,10 @@
 - **This week** on the Overview tab: this week so far against the same days of last week, with busiest day, top project and top model.
 - **Export CSV** in Settings: one row per day, project and model with token counts, for the period shown.
 - **Check for updates** in Settings: the one network request Lucelis makes, only when pressed. A newer version gets its two update commands copied for you to paste; nothing is installed automatically.
+- **What's new.** After an update, one quiet line at the top of Overview names the main changes, from the notes shipped with the plugin. Full notes copies the link; Dismiss hides it. Never a pop-up.
+- **Last seen.** After a restart, the last 5H and 7D figures show dimmed and marked "last seen" until the first reply, while their window lasts. Never coloured or warned about.
+- **Tight bar.** On a narrow window the bar shortens its items (no % signs, then one-letter labels) before it leaves out 5H, 7D, cache or context.
+- **Format guard.** If many replies in your history are in a shape Lucelis does not recognise, the pane says totals may be low, instead of showing them as if complete.
 - README and plugin description updated for the update check.
 
 ## 1.0.2 — 2026-11-10

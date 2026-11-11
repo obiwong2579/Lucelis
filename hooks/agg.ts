@@ -77,6 +77,8 @@ export type Agg = {
   git: Record<string, string>
   flagged: number
   parseErrors: number
+  /** Reply records whose shape the extractor did not know (a transcript format change). Absent in older caches. */
+  shape?: number
 }
 
 export const emptyAgg = (): Agg => ({
@@ -323,7 +325,8 @@ export const ingest = (a: Agg, text: string, tasks: FileTask[]): IngestResult =>
         break
       }
       case 'X':
-        a.parseErrors++
+        if (c[2] === 'shape') a.shape = (a.shape ?? 0) + 1
+        else a.parseErrors++
         break
       default:
         pending.push(c)
@@ -334,6 +337,19 @@ export const ingest = (a: Agg, text: string, tasks: FileTask[]): IngestResult =>
   a.orphans = [...orphans].slice(-5000)
   return { next, rows: n, reset }
 }
+
+/**
+ * Whether enough reply records had a shape the extractor did not know that the totals are
+ * likely low: at least 10 of them, and at least one in twenty of all reply records seen.
+ */
+export const formatSuspect = (a: Agg): boolean => {
+  const odd = a.shape ?? 0
+  if (odd < 10) return false
+  let ok = 0
+  for (const s of Object.values(a.sess)) ok += s.resp + s.side
+  return odd * 20 >= odd + ok
+}
+export const FORMAT_NOTE = "Some history could not be read; Claude Code's format may have changed. Totals may be low."
 
 // ---------------------------------------------------------------- dates
 

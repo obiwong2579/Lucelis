@@ -274,7 +274,7 @@ test('turning items off gives their room to the next enabled ones (reflow)', asy
   for (const cols of [40, 56, 62, 80, 100, 140]) for (const mode of ['minimal', 'normal', 'detailed']) {
     const L = barLayout(FULL, withShow(all, mode), cols)
     L.rows.forEach((r, i) => {
-      const used = r.reduce((n, p, j) => n + W(p.segs) + (j && !p.after ? 3 : 0), 0)
+      const used = r.reduce((n, p, j) => n + W(p.segs) + (j && !p.after ? (i === 0 && L.tier ? 1 : 3) : 0), 0)
       if (cols >= 56) expect(used <= (i === 0 ? cols - 22 : cols - 2)).toBe(true)
     })
   }

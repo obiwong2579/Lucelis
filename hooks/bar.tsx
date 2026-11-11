@@ -14,6 +14,9 @@
 // red at or under the low level, yellow between), "CTX 24%" is what is USED, K / M figures are tokens, "Today" is this project.
 //   4. Width: items are placed in priority order (ITEMS below) and the ones that do
 //      not fit are left out; turning an item off gives its room to the next ones.
+//      Before 5H, 7D, cache or context is left out, the row goes TIGHT: no % signs, no
+//      words, no │ ("5H 76 7D 52 WARM CTX 41"), then one-letter labels ("W", "C 41").
+//      Reset times and cache minutes then live in More. 5H and 7D are never left out.
 // barLayout() reports each item's state, and Settings shows it.
 
 import type { Settings } from '../types'
@@ -27,8 +30,12 @@ type El = { Box: any; Text: any; Button: any }
 /** One run of text: [text, color, bold?]. */
 export type Seg = [string, string, boolean?]
 export type ItemKey = keyof Settings['show']
-/** A part of a row: its forms, longest first, and how much it matters (1 = kept longest). */
-export type Part = { key: string; prio: number; forms: Seg[][]; after?: string; floor?: number; item?: ItemKey; row?: 1 | 2 }
+/**
+ * A part of a row: its forms, longest first, and how much it matters (1 = kept longest).
+ * `tight` / `letter`: its form in a tight row and in a one-letter row (a part without them
+ * keeps its shortest form; an attached part without them is left to More).
+ */
+export type Part = { key: string; prio: number; forms: Seg[][]; after?: string; floor?: number; item?: ItemKey; row?: 1 | 2; tight?: Seg[]; letter?: Seg[] }
 export type Shown = { key: string; segs: Seg[]; after?: string }
 
 /** The compact bar's items, in priority order (the order Settings lists them in). */
@@ -52,6 +59,7 @@ export type ItemState = 'off' | 'shown' | 'density' | 'width' | 'nodata'
 const GLYPH = 3
 const QNAME: Record<string, string> = { five_hour: '5H', seven_day: '7D', spend_limit: 'SPEND' }
 const SEP = 3 // " │ "
+const SEP_TIGHT = 1 // " "
 /** The More / Details buttons at the end of the compact row, in columns (full labels / glyphs). */
 const BUTTONS = 20
 const BUTTONS_NARROW = 6
@@ -69,14 +77,14 @@ const width = (segs: Seg[]) => segs.reduce((n, s) => n + s[0].length, 0)
  * always do); then parts grow to longer forms, again in priority order, while room
  * is left. Returns the chosen parts in their original order.
  */
-export const fit = (parts: Part[], room: number, keep = 0): Shown[] => {
+export const fit = (parts: Part[], room: number, keep = 0, gap = SEP): Shown[] => {
   const order = [...parts].sort((a, b) => a.prio - b.prio)
   const pick = new Map<string, number>()
   let used = 0
   for (const p of order) {
     // An attached part (a quota's reset time) follows its parent with no separator, and only with it.
     if (p.after && !pick.has(p.after)) continue
-    const sep = p.after || !pick.size ? 0 : SEP
+    const sep = p.after || !pick.size ? 0 : gap
     // `floor`: the shortest form normally used; forms below it only for a kept part with no room.
     const floor = Math.min(p.floor ?? p.forms.length - 1, p.forms.length - 1)
     const w = width(p.forms[floor]) + sep
@@ -127,15 +135,20 @@ export const compactParts = (v: View, st: Settings): Part[] => {
     const name = QNAME[q.kind] ?? q.kind.toUpperCase()
     // The engine reports what is used; the bar shows what is LEFT. No "left" / "LOW" words:
     // the figure is green from 70%, red at or under the warning level (as the logo), yellow between.
+    // A "last seen" figure from an earlier session is drawn dim, never in a health colour.
     const lvl = levelFor(q.kind, st.warn)
-    const core: Seg[] = [[`${name} `, MUTED, true], [`${q.left}%`, lvl === null ? health(q.left) : quotaHealth(q.left, lvl), true]]
-    parts.push({ key: q.kind, item, row: 1, prio: isH5 ? 1 : 2, forms: [core] })
+    const col = q.stale ? MUTED : lvl === null ? health(q.left) : quotaHealth(q.left, lvl)
+    const core: Seg[] = [[`${name} `, MUTED, true], [`${q.left}%`, col, !q.stale]]
+    parts.push({ key: q.kind, item, row: 1, prio: isH5 ? 1 : 2, forms: [core], tight: [[`${name} `, MUTED, true], [String(q.left), col, !q.stale]] })
     // The reset time is its own part, attached to its quota: placed after cache and context.
     if (show.resets && q.resetIn !== null) {
       const t = q.resetIn <= 0 ? 'resetting' : dur(q.resetIn)
       parts.push({ key: `${q.kind}-reset`, item: 'resets', row: 1, after: q.kind, prio: isH5 ? 6 : 6.5, forms: [[[` · ${t}`, MUTED]]] })
     }
   }
+  // Figures from an earlier session say so, after the last of them; dropped before they are.
+  const stale = parts.filter(p => p.after === undefined && v.quotas.some(q => q.kind === p.key && q.stale))
+  if (stale.length) parts.push({ key: 'seen', row: 1, after: stale[stale.length - 1].key, prio: 2.5, forms: [[[' · last seen', MUTED]], [[' (last)', MUTED]]], tight: [[' (last)', MUTED]], letter: [['*', MUTED]] })
   // The cache clock is INFERRED from request timing (prices.ts); the pane and More say so.
   const c = v.cache
   if (c && show.cache) {
@@ -143,12 +156,14 @@ export const compactParts = (v: View, st: Settings): Part[] => {
     const word: Seg = [c.mode === 'warm' ? 'WARM' : 'COLD', hue, true]
     parts.push({ key: 'cache', item: 'cache', row: 1, prio: 3, floor: c.mode === 'warm' ? 0 : 1, forms: c.mode === 'warm'
       ? [[word, [` ${c.minsLeft}m`, hue]], [word]]
-      : [[word, [` · idle ${dur(c.idleMs)}`, hue]], [word]] })
+      : [[word, [` · idle ${dur(c.idleMs)}`, hue]], [word]],
+      tight: [word], letter: [[c.mode === 'warm' ? 'W' : 'C', hue, true]] })
   }
   if (v.ctx && show.ctx) {
     // Context is what is USED, so its health is read from what is left of the window.
     const col = health(100 - v.ctx.percent)
-    parts.push({ key: 'ctx', item: 'ctx', row: 1, prio: 5, forms: [[['CTX ', MUTED, true], [`${v.ctx.percent}%`, col, true]]] })
+    parts.push({ key: 'ctx', item: 'ctx', row: 1, prio: 5, forms: [[['CTX ', MUTED, true], [`${v.ctx.percent}%`, col, true]]],
+      tight: [['CTX ', MUTED, true], [String(v.ctx.percent), col, true]], letter: [['C ', MUTED, true], [String(v.ctx.percent), col, true]] })
   }
   const s = v.session
   if (s?.project && show.project) parts.push({ key: 'proj', item: 'project', row: 2, prio: 7, forms: [[[shortProject(s.project.name), TEXT, true]]] })
@@ -163,7 +178,15 @@ export const compactParts = (v: View, st: Settings): Part[] => {
   return parts
 }
 
-export type Layout = { rows: Shown[][]; narrow: boolean; state: Record<ItemKey, ItemState>; glyph: boolean }
+/** `tier`: 0 normal, 1 tight, 2 one-letter labels (the first row only). */
+export type Layout = { rows: Shown[][]; narrow: boolean; state: Record<ItemKey, ItemState>; glyph: boolean; tier: 0 | 1 | 2 }
+
+/** Usage parts (5H, 7D, cache, context) go tight before any of them is left out. */
+const USAGE = 5
+/** The parts of a row at a tier: tight or one-letter forms; attached parts without one go to More. */
+export const atTier = (parts: Part[], tier: 0 | 1 | 2): Part[] => tier === 0 ? parts : parts
+  .filter(p => !p.after || p.tight)
+  .map(p => (p.tight ? { ...p, floor: undefined, forms: [tier === 2 ? p.letter ?? p.tight : p.tight] } : p))
 
 /** What the compact bar draws at `columns`, and each item's state (for Settings). */
 export const barLayout = (v: View, st: Settings, columns: number, canGlyph = true): Layout => {
@@ -177,7 +200,14 @@ export const barLayout = (v: View, st: Settings, columns: number, canGlyph = tru
   // bar (glyph buttons) drops it, so 5H and 7D always keep their place.
   const glyph = !!st.logo && canGlyph && !narrow
   const room = columns - (narrow ? BUTTONS_NARROW : BUTTONS) - 2 - (glyph ? GLYPH : 0)
-  const top = fit(first, room, 2)
+  // Tight before dropping: each tier is tried while a usage part is still left out.
+  const lost = (shown: Shown[]) => first.some(p => p.prio <= USAGE && !p.after && !shown.some(s => s.key === p.key))
+  let tier: 0 | 1 | 2 = 0
+  let top = fit(first, room, 2)
+  while (tier < 2 && lost(top)) {
+    tier = (tier + 1) as 1 | 2
+    top = fit(atTier(first, tier), room, 2, SEP_TIGHT)
+  }
   // Second row: Detailed's session items; or, in Normal with "Second line" on, whatever the
   // first row had no room for (a reset time stays with its quota, so it never moves down).
   const onTop = new Set(top.map(p => p.key))
@@ -193,7 +223,7 @@ export const barLayout = (v: View, st: Settings, columns: number, canGlyph = tru
       : !mine.some(inDensity) ? 'density'
       : mine.some(p => drawn.has(p.key)) ? 'shown' : 'width'
   }
-  return { rows, narrow, state, glyph }
+  return { rows, narrow, state, glyph, tier }
 }
 
 export const compactRow = (ui: El, v: View, st: Settings, columns: number, expanded: boolean, paneOpen: boolean, onMore: () => void, onDetails: () => void, working = false) => {
@@ -203,7 +233,7 @@ export const compactRow = (ui: El, v: View, st: Settings, columns: number, expan
   const line = (shown: Shown[], k: string): any[] => {
     const row: any[] = []
     shown.forEach((p, i) => {
-      if (i > 0 && !p.after) row.push(<Text key={`sep-${k}-${p.key}`} color={EMPTY}> │ </Text>)
+      if (i > 0 && !p.after) row.push(<Text key={`sep-${k}-${p.key}`} color={EMPTY}>{k === 'a' && L.tier ? ' ' : ' │ '}</Text>)
       row.push(segsEl(ui, p.key, p.segs, !st.bg))
     })
     return row
@@ -211,7 +241,7 @@ export const compactRow = (ui: El, v: View, st: Settings, columns: number, expan
   const top = line(L.rows[0], 'a')
   // Only where the surface draws SVG (not the terminal): no text stand-in, no image hack.
   // The glint turns red while a quota is at or under its warning level; the bars draw in while Claude works.
-  const low = v.quotas.some(q => { const l = levelFor(q.kind, st.warn); return l !== null && q.left <= l })
+  const low = v.quotas.some(q => { const l = levelFor(q.kind, st.warn); return !q.stale && l !== null && q.left <= l })
   const src = logoFor(working, low)
   const alt = `Lucelis${working ? ', working' : ''}${low ? ', quota low' : ''}`
   if (L.glyph && Svg) top.unshift(<Box key="glyph" marginRight={1} flexShrink={0}><Svg source={st.bg ? src : adaptiveLogo(src)} alt={alt} width={16} height={16} /></Box>)
